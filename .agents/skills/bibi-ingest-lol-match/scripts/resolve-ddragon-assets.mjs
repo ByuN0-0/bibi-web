@@ -7,8 +7,14 @@ import {pathToFileURL} from "node:url";
 import {MATCH_ROLE_ORDER, selectTeamSpellQuestAssignments} from "./scoreboard-machine-core.mjs";
 
 const ORIGIN = "https://ddragon.leagueoflegends.com";
+const SCOREBOARD_KEYSTONE_NAMES = new Set([
+  "폭풍전사의포효", "콩콩이소환", "죽음불꽃손길", "신비로운유성", "어둠의수확", "감전", "칼날비",
+  "기민한발놀림", "치명적속도", "집중공격", "정복자", "수호자", "여진", "착취의손아귀",
+  "빙결강화", "선제공격", "봉인풀린주문서",
+]);
 const binaryCache = new Map();
 const iconCache = new Map();
+const iconHashCache = new WeakMap();
 let normalizedScreenPromise;
 let sharpPromise;
 let cacheDir;
@@ -58,8 +64,11 @@ export async function resolveDataDragonAssets(input, options = {}) {
   const champions = Object.values(championData.data).filter((entry) => !entry.id.includes("_")).map((entry) => candidate(entry.id, entry.name, `img/champion/${entry.image.full}`, entry.image));
   const allItems = Object.entries(itemData.data)
     .filter(([, entry]) => !entry.name.includes("<") && !entry.name.includes("Placeholder"))
-    .map(([id, entry]) => candidate(id, entry.name, `img/item/${entry.image.full}`, entry.image, questRoleForItem(id, entry)));
-  const summonerRiftItems = uniqueCandidates(allItems.filter((entry) => /^\d{4}$/.test(entry.id) && itemData.data[entry.id]?.maps?.["11"] === true));
+    .map(([id, entry]) => candidate(id, entry.name, `img/item/${entry.image.full}`, entry.image, questRoleForItem(id, entry), {
+      inventoryEligible: isObtainableInventoryItem(id, entry),
+      requiredChampion: entry.requiredChampion ?? null,
+    }));
+  const summonerRiftItems = uniqueCandidates(allItems.filter((entry) => entry.inventoryEligible));
   const questItems = uniqueCandidates(allItems.filter((entry) => entry.questRole));
   const trinkets = uniqueCandidates(allItems.filter((entry) => ["3340", "3363", "3364"].includes(entry.id)));
   catalogs = {
@@ -69,7 +78,9 @@ export async function resolveDataDragonAssets(input, options = {}) {
     quest: questItems,
     trinket: trinkets,
     spell: Object.values(spellData.data).filter((entry) => entry.modes?.includes("CLASSIC")).map((entry) => candidate(entry.id, entry.name, `img/spell/${entry.image.full}`, entry.image)),
-    perk: runeTrees.flatMap((tree) => tree.slots[0]?.runes ?? []).map((entry) => candidate(String(entry.id), entry.name, entry.icon, null)),
+    perk: runeTrees.flatMap((tree) => tree.slots[0]?.runes ?? [])
+      .filter((entry) => isScoreboardKeystone(entry.name))
+      .map((entry) => candidate(String(entry.id), entry.name, entry.icon, null)),
   };
   if (!payload.ingestionId) {
     if (!screenshot) fail("ingestionId is required when --screenshot is omitted.");
@@ -91,8 +102,9 @@ export async function resolveDataDragonAssets(input, options = {}) {
     participant.champion = await resolveValue(participant.champion, "champion", `participants[${index}].champion`, assetCoordinates.champion);
     participant.primaryPerk = await resolveValue(participant.primaryPerk, "perk", `participants[${index}].primaryPerk`, assetCoordinates.perk);
     participant.summonerSpells = await resolveSlots(participant.summonerSpells, "spell", `participants[${index}].summonerSpells`, assetCoordinates.spells, false);
-    const inventory = inventoryCoordinates(row);
-    participant.items = await resolveSlots(participant.items, "item", `participants[${index}].items`, inventory.items, true);
+    const inventory = participantInventoryCoordinates(row);
+    const inventoryCandidates = catalogs.item.filter((candidate) => !candidate.requiredChampion || candidate.requiredChampion === participant.champion.id);
+    participant.items = await resolveSlots(participant.items, "item", `participants[${index}].items`, inventory.items, true, inventoryCandidates);
     participant.trinket = await resolveNullable(participant.trinket, "trinket", `participants[${index}].trinket`, inventory.trinket);
     participant.questSlot = await resolveNullable(participant.questSlot, "quest", `participants[${index}].questSlot`, inventory.quest);
   }
@@ -135,23 +147,23 @@ async function runCli() {
   }
 }
 
-async function resolveSlots(values, kind, field, coordinates, nullable) {
+async function resolveSlots(values, kind, field, coordinates, nullable, candidates = catalogs[kind]) {
   if (!Array.isArray(values) || values.length !== coordinates.length) fail(`${field} must contain exactly ${coordinates.length} slots.`);
-  return Promise.all(values.map((value, index) => nullable && value === null ? null : resolveValue(value, kind, `${field}[${index}]`, coordinates[index])));
+  return Promise.all(values.map((value, index) => nullable && value === null ? null : resolveValue(value, kind, `${field}[${index}]`, coordinates[index], candidates)));
 }
 async function resolveNullable(value, kind, field, coordinates) { return value === null ? null : resolveValue(value, kind, field, coordinates); }
-async function resolveValue(value, kind, field, coordinates) {
+async function resolveValue(value, kind, field, coordinates, candidates = catalogs[kind]) {
   if (value && typeof value === "object" && value.id && value.name && value.iconPath) {
-    const canonical = catalogs[kind].find((candidate) => candidate.id === String(value.id));
+    const canonical = candidates.find((candidate) => candidate.id === String(value.id));
     if (canonical && canonical.name === value.name && canonical.iconPath === value.iconPath) return exactAsset(canonical, field);
   }
   const name = typeof value === "string" ? normalize(value) : "";
-  const exact = catalogs[kind].filter((candidate) => normalize(candidate.name) === name);
+  const exact = candidates.filter((candidate) => normalize(candidate.name) === name);
   if (exact.length === 1) return exactAsset(exact[0], field);
   const standardIdMatch = exact.filter((candidate) => /^\d{4}$/.test(candidate.id));
   if (standardIdMatch.length === 1) return exactAsset(standardIdMatch[0], field);
   if (!screenshot) { unresolved.push(`${field}: ${value ?? "missing"}`); return null; }
-  const matched = await compareCrop(screenshot, coordinates, catalogs[kind], kind, field);
+  const matched = await compareCrop(screenshot, coordinates, candidates, kind, field);
   if (!matched) unresolved.push(`${field}: ${value ?? "missing"}`);
   return matched ? assetRef(matched) : null;
 }
@@ -164,17 +176,23 @@ async function compareCrop(buffer, crop, candidates, kind, field) {
   const sharp = await getSharp();
   normalizedScreenPromise ??= sharp(buffer).resize({width: 1028}).png().toBuffer();
   const normalizedScreen = await normalizedScreenPromise;
-  const normalized = await sharp(normalizedScreen).extract(crop).resize(32, 32).removeAlpha().raw().toBuffer();
-  const targetHash = differenceHash(normalized, 32, 32, 3);
-  const scored = [];
-  for (const candidate of candidates) {
-    const icons = await cachedCandidateIcons(candidate, kind);
-    for (const icon of icons) scored.push({candidate, icon, hashDistance: hamming(targetHash, differenceHash(icon, 32, 32, 3))});
+  const targets = await normalizedCropTargets(sharp, normalizedScreen, crop, kind);
+  const evaluated = [];
+  for (const target of targets) {
+    const targetHash = differenceHash(target.normalized, 32, 32, 3);
+    const scored = [];
+    for (const candidate of candidates) {
+      const icons = await cachedCandidateIcons(candidate, kind);
+      for (const icon of icons) scored.push({candidate, icon, hashDistance: hamming(targetHash, cachedIconHash(icon))});
+    }
+    const candidateLimit = kind === "quest" ? catalogs.quest.length : 5;
+    const precisionPool = bestCandidateVariants(scored.sort((a, b) => a.hashDistance - b.hashDistance).slice(0, 150), target.normalized, kind).slice(0, candidateLimit);
+    if (precisionPool[0]) evaluated.push({target, precisionPool, quality: cropQuality(precisionPool, target)});
   }
-  const candidateLimit = kind === "quest" ? catalogs.quest.length : 5;
-  const precisionPool = bestCandidateVariants(scored.sort((a, b) => a.hashDistance - b.hashDistance).slice(0, 150), normalized, kind).slice(0, candidateLimit);
+  const chosen = evaluated.sort((left, right) => left.quality - right.quality)[0];
+  const precisionPool = chosen?.precisionPool ?? [];
   candidatePools.set(field, precisionPool);
-  if (process.env.BIBI_DDRAGON_DEBUG === "1") process.stderr.write(`${field} ${kind} candidates: ${precisionPool.map((entry) => `${entry.candidate.name}:${entry.hashDistance}/${Math.round(entry.pixelError)}`).join(", ")}\n`);
+  if (process.env.BIBI_DDRAGON_DEBUG === "1") process.stderr.write(`${field} ${kind} crop=${chosen?.target.dx ?? 0},${chosen?.target.dy ?? 0} candidates: ${precisionPool.map((entry) => `${entry.candidate.name}:${entry.hashDistance}/${Math.round(entry.pixelError)}`).join(", ")}\n`);
   const normalMatch = isUniqueMatch(precisionPool, acceptanceThreshold(kind), acceptanceMargin(kind));
   const clearChampionHash = kind === "champion" && precisionPool[0]?.hashDistance <= 20
     && precisionPool[0].pixelError <= 650 && scoreGap(precisionPool) >= 35;
@@ -182,11 +200,41 @@ async function compareCrop(buffer, crop, candidates, kind, field) {
   const selected = precisionPool[0];
   const accepted = normalMatch || clearChampionHash || clearPerk;
   if (selected) {
-    const resolution = {field, kind, selected: assetRef(selected.candidate), accepted, score: Math.round(selected.matchScore), runnerUpGap: Math.round(scoreGap(precisionPool))};
+    const resolution = {field, kind, selected: assetRef(selected.candidate), accepted, score: Math.round(selected.matchScore), runnerUpGap: Math.round(scoreGap(precisionPool)), cropOffset: {x: chosen.target.dx, y: chosen.target.dy}};
     resolutions.push(resolution);
     resolutionByField.set(field, resolution);
   }
   return accepted || (allowAmbiguous && selected) ? selected.candidate : null;
+}
+
+async function normalizedCropTargets(sharp, normalizedScreen, crop, kind) {
+  const searchable = ["ban", "spell", "perk"].includes(kind);
+  const offsets = searchable ? [-1, 0, 1].flatMap((dy) => [-1, 0, 1].map((dx) => ({dx, dy}))) : [{dx: 0, dy: 0}];
+  return Promise.all(offsets.map(async ({dx, dy}) => ({
+    dx,
+    dy,
+    normalized: await sharp(normalizedScreen)
+      .extract({...crop, left: crop.left + dx, top: crop.top + dy})
+      .resize(32, 32)
+      .removeAlpha()
+      .raw()
+      .toBuffer(),
+  })));
+}
+
+function cropQuality(pool, target) {
+  const confidenceBonus = Math.min(scoreGap(pool), 150) * 0.35;
+  const movementPenalty = (Math.abs(target.dx) + Math.abs(target.dy)) * 2;
+  return pool[0].matchScore - confidenceBonus + movementPenalty;
+}
+
+function cachedIconHash(icon) {
+  let hash = iconHashCache.get(icon);
+  if (hash === undefined) {
+    hash = differenceHash(icon, 32, 32, 3);
+    iconHashCache.set(icon, hash);
+  }
+  return hash;
 }
 
 function bestCandidateVariants(entries, normalized, kind) {
@@ -336,17 +384,22 @@ export function participantAssetCoordinates(row) {
     ],
   };
 }
-function inventoryCoordinates(row) {
-  const standardInset = Math.max(2, Math.round(itemSlotGap * 3 / 25));
-  const questInset = Math.round(itemSlotGap * 9 / 25) + 2;
+export function participantInventoryCoordinates(row, gridLeft = itemGridLeft ?? 281, slotGap = itemSlotGap ?? 25) {
+  const standardInset = Math.max(2, Math.round(slotGap * 3 / 25));
+  const questInset = Math.round(slotGap * 9 / 25) + 2;
   return {
-    items: Array.from({length: 6}, (_, index) => ({left: itemGridLeft + index * itemSlotGap + standardInset, top: row - 10, width: 22, height: 22})),
-    trinket: {left: itemGridLeft + 6 * itemSlotGap + standardInset, top: row - 10, width: 22, height: 22},
-    quest: {left: itemGridLeft + 7 * itemSlotGap + questInset, top: row - 10, width: 22, height: 22},
+    items: Array.from({length: 6}, (_, index) => ({left: gridLeft + index * slotGap + standardInset, top: row - 10, width: 22, height: 22})),
+    trinket: {left: gridLeft + 6 * slotGap + standardInset, top: row - 10, width: 22, height: 22},
+    quest: {left: gridLeft + 7 * slotGap + questInset, top: row - 10, width: 22, height: 22},
   };
 }
 function normalize(value) { return String(value).normalize("NFC").trim().replace(/\s+/g, " ").toLocaleLowerCase("ko-KR"); }
-function candidate(id, name, iconPath, image, questRole = null) { return {id: String(id), name, iconPath, image, questRole}; }
+function candidate(id, name, iconPath, image, questRole = null, metadata = {}) { return {id: String(id), name, iconPath, image, questRole, ...metadata}; }
+export function isObtainableInventoryItem(id, entry) {
+  if (!/^\d{4}$/.test(id) || entry.maps?.["11"] !== true || entry.hideFromAll === true) return false;
+  return entry.gold?.purchasable === true || (Array.isArray(entry.from) && entry.from.length > 0);
+}
+export function isScoreboardKeystone(name) { return SCOREBOARD_KEYSTONE_NAMES.has(String(name).replace(/\s+/g, "")); }
 function questRoleForItem(id, entry) {
   if (["1200", "1220", "1221", "1222"].includes(id)) return "TOP";
   if (["1204", "1209", "1210", "1211"].includes(id)) return "JUNGLE";

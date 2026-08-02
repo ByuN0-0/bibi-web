@@ -13,7 +13,7 @@ import {
   selectTeamSpellQuestAssignments,
   validateMechanicalTotals,
 } from "./scoreboard-machine-core.mjs";
-import {participantAssetCoordinates} from "./resolve-ddragon-assets.mjs";
+import {isObtainableInventoryItem, isScoreboardKeystone, participantAssetCoordinates, participantInventoryCoordinates} from "./resolve-ddragon-assets.mjs";
 
 describe("scoreboard machine parsing", () => {
   it("normalizes common OCR substitutions", () => {
@@ -117,6 +117,22 @@ describe("summoner spell and quest constraints", () => {
 });
 
 describe("scoreboard anchor detection", () => {
+  it("keeps purchasable and evolved Rift items while excluding hidden or unobtainable entries", () => {
+    const riftItem = {maps: {"11": true}, gold: {purchasable: true}};
+    expect(isObtainableInventoryItem("6690", riftItem)).toBe(true);
+    expect(isObtainableInventoryItem("3040", {maps: {"11": true}, gold: {purchasable: false}, from: ["3003"]})).toBe(true);
+    expect(isObtainableInventoryItem("1515", {maps: {"11": true}, gold: {purchasable: false}})).toBe(false);
+    expect(isObtainableInventoryItem("3400", {...riftItem, hideFromAll: true})).toBe(false);
+    expect(isObtainableInventoryItem("6690", {...riftItem, maps: {"11": false}})).toBe(false);
+  });
+
+  it("restricts rune matching to the scoreboard keystone set", () => {
+    expect(isScoreboardKeystone("봉인 풀린 주문서")).toBe(true);
+    expect(isScoreboardKeystone("폭풍전사의 포효")).toBe(true);
+    expect(isScoreboardKeystone("난입")).toBe(false);
+    expect(isScoreboardKeystone("마나순환 팔찌")).toBe(false);
+  });
+
   it("crops the portrait center and both spell interiors without their gold frame", () => {
     expect(participantAssetCoordinates(207)).toEqual({
       champion: {left: 92, top: 191, width: 32, height: 32},
@@ -126,6 +142,17 @@ describe("scoreboard anchor detection", () => {
         {left: 43, top: 208, width: 11, height: 11},
       ],
     });
+  });
+
+  it("uses the detected item grid for both empty-slot checks and asset matching", () => {
+    expect(participantInventoryCoordinates(276, 288, 25).items).toEqual([
+      {left: 291, top: 266, width: 22, height: 22},
+      {left: 316, top: 266, width: 22, height: 22},
+      {left: 341, top: 266, width: 22, height: 22},
+      {left: 366, top: 266, width: 22, height: 22},
+      {left: 391, top: 266, width: 22, height: 22},
+      {left: 416, top: 266, width: 22, height: 22},
+    ]);
   });
 
   it("finds the canonical row and item grid from fixed gold borders", () => {

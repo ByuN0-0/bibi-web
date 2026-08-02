@@ -20,7 +20,7 @@ import {
   repairMissingParticipantTotals,
   validateMechanicalTotals,
 } from "./scoreboard-machine-core.mjs";
-import {resolveDataDragonAssets} from "./resolve-ddragon-assets.mjs";
+import {participantInventoryCoordinates, resolveDataDragonAssets} from "./resolve-ddragon-assets.mjs";
 
 let aligned;
 let worker;
@@ -43,6 +43,7 @@ export async function readScoreboardImage(original, options = {}) {
   // and a row-only aligned image for independently anchored asset crops.
   aligned = await alignToCanvas(normalized, normalizedInfo, layout.transform);
   const assetAligned = await alignToCanvas(normalized, normalizedInfo, {...layout.transform, xScale: 1, xOffset: 0});
+  const rowOffsets = participantRowOffsets(layout);
   const ocrCachePath = join(cacheRoot, "bibi-tesseract-cache");
   await mkdir(ocrCachePath, {recursive: true});
   const workers = await getWorkers(ocrCachePath, options.reuseWorkers ?? false);
@@ -52,7 +53,12 @@ export async function readScoreboardImage(original, options = {}) {
   ocrQueue = Promise.resolve();
   let recognizedPayload;
   try {
-    recognizedPayload = await recognizeScoreboard(original);
+    recognizedPayload = await recognizeScoreboard(original, {
+      inventoryImage: assetAligned,
+      itemGridLeft: layout.source.itemGridLeft,
+      itemSlotGap: layout.source.itemSlotGap,
+      rowOffsets,
+    });
   } finally {
     if (!(options.reuseWorkers ?? false)) await Promise.all([worker.terminate(), englishWorker.terminate()]);
   }
@@ -65,7 +71,7 @@ export async function readScoreboardImage(original, options = {}) {
       allowAmbiguous: options.allowAmbiguous ?? true,
       itemGridLeft: layout.source.itemGridLeft,
       itemSlotGap: layout.source.itemSlotGap,
-      rowOffsets: participantRowOffsets(layout),
+      rowOffsets,
     });
     resolvedPayload = resolved.payload;
     report.assets = resolved.assets;
@@ -121,7 +127,7 @@ async function englishNameField(field, rectangle) {
   return entry;
 }
 
-async function recognizeScoreboard(original) {
+async function recognizeScoreboard(original, assetLayout) {
   const [resultText, durationText, dateText] = await Promise.all([
     textField("result", {left: 66, top: 12, width: 86, height: 32}),
     textField("duration", {left: 242, top: 43, width: 54, height: 22}, "time"),
@@ -175,10 +181,11 @@ async function recognizeScoreboard(original) {
       const matches = [nameResult.text, englishNameResult.text, combinedName].map((name) => matchRegisteredPlayer(name, players)).filter(Boolean);
       const matched = matches.sort((left, right) => right.confidence - left.confidence)[0] ?? null;
       const detectedName = matched ? matched.observedName : englishNameResult.confidence > nameResult.confidence ? englishNameResult.text : nameResult.text;
-      const items = [];
-      for (const left of [284, 309, 334, 359, 384, 409]) {
-        items.push(await occupied(aligned, {left, top: row - 10, width: 22, height: 22}) ? "?" : null);
-      }
+      const assetRow = row + (assetLayout.rowOffsets[team]?.[rowIndex] ?? 0);
+      const inventory = participantInventoryCoordinates(assetRow, assetLayout.itemGridLeft, assetLayout.itemSlotGap);
+      const items = await Promise.all(inventory.items.map(async (rectangle) => (
+        await occupied(assetLayout.inventoryImage, rectangle) ? "?" : null
+      )));
       participants.push({
         team,
         observedName: compactOcrName(detectedName),
@@ -271,7 +278,14 @@ async function prepareOcrCrop(buffer, rectangle, type, highContrast = false) {
 }
 
 async function occupied(buffer, rectangle) {
-  const {data, info} = await sharp(buffer).extract(clampRectangle(rectangle)).removeAlpha().raw().toBuffer({resolveWithObject: true});
+  const inset = 2;
+  const interior = {
+    left: rectangle.left + inset,
+    top: rectangle.top + inset,
+    width: rectangle.width - inset * 2,
+    height: rectangle.height - inset * 2,
+  };
+  const {data, info} = await sharp(buffer).extract(clampRectangle(interior)).removeAlpha().raw().toBuffer({resolveWithObject: true});
   const pixels = info.width * info.height;
   const sums = [0, 0, 0]; const squared = [0, 0, 0];
   for (let index = 0; index < data.length; index += info.channels) {
