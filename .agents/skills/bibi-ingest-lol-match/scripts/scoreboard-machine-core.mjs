@@ -171,6 +171,24 @@ export function validateMechanicalTotals(teamStats, participants) {
   return errors;
 }
 
+export function repairMissingParticipantTotals(teamStats, participants) {
+  const repairs = [];
+  const fields = [["kills", "kills"], ["deaths", "deaths"], ["assists", "assists"], ["goldTotal", "goldEarned"]];
+  for (const stats of teamStats) {
+    const members = participants.map((participant, index) => ({participant, index})).filter(({participant}) => participant.team === stats.team);
+    for (const [teamField, participantField] of fields) {
+      const missing = members.filter(({participant}) => !Number.isInteger(participant[participantField]));
+      if (missing.length !== 1) continue;
+      const knownTotal = members.reduce((sum, {participant}) => sum + (Number.isInteger(participant[participantField]) ? participant[participantField] : 0), 0);
+      const derived = stats[teamField] - knownTotal;
+      if (!Number.isInteger(derived) || derived < 0) continue;
+      missing[0].participant[participantField] = derived;
+      repairs.push({team: stats.team, participantIndex: missing[0].index, field: participantField, value: derived});
+    }
+  }
+  return repairs;
+}
+
 export function selectSpellQuestCombination(spellSlots, questCandidates, requiredRole = null) {
   const combinations = spellQuestCombinations(spellSlots, questCandidates, requiredRole);
   const best = combinations[0];

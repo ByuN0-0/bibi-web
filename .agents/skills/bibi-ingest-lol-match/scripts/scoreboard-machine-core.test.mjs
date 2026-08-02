@@ -6,6 +6,7 @@ import {
   parseDate,
   parseDuration,
   parseInteger,
+  repairMissingParticipantTotals,
   roleFromQuest,
   selectSpellQuestCombination,
   selectTeamSpellQuestAssignments,
@@ -35,6 +36,14 @@ describe("scoreboard machine parsing", () => {
     }));
     const teamStats = ["BLUE", "RED"].map((team) => ({team, kills: 5, deaths: 10, assists: 15, goldTotal: team === "BLUE" ? 5001 : 5000}));
     expect(validateMechanicalTotals(teamStats, participants)).toEqual(["BLUE goldTotal: team=5001 players=5000"]);
+  });
+
+  it("derives one missing player total from the visible team total", () => {
+    const participants = Array.from({length: 5}, (_, index) => ({team: "RED", kills: index + 1, deaths: 2, assists: index ? index + 3 : null, goldEarned: 1000}));
+    const teamStats = [{team: "RED", kills: 15, deaths: 10, assists: 30, goldTotal: 5000}];
+    expect(repairMissingParticipantTotals(teamStats, participants)).toEqual([{team: "RED", participantIndex: 0, field: "assists", value: 12}]);
+    expect(participants[0].assists).toBe(12);
+    expect(validateMechanicalTotals(teamStats, participants)).toEqual([]);
   });
 });
 

@@ -14,6 +14,8 @@ let sharpPromise;
 let cacheDir;
 let offsetY;
 let banOffsetY;
+let itemGridLeft;
+let itemSlotGap;
 let allowAmbiguous;
 let payload;
 let version;
@@ -28,6 +30,8 @@ export async function resolveDataDragonAssets(input, options = {}) {
   cacheDir = options.cacheDir ?? join(tmpdir(), "bibi-ddragon-cache");
   offsetY = options.offsetY ?? 0;
   banOffsetY = options.banOffsetY ?? offsetY;
+  itemGridLeft = options.itemGridLeft ?? 281;
+  itemSlotGap = options.itemSlotGap ?? 25;
   allowAmbiguous = options.allowAmbiguous ?? false;
   payload = structuredClone(input);
   screenshot = options.screenshot ?? null;
@@ -83,9 +87,10 @@ export async function resolveDataDragonAssets(input, options = {}) {
     participant.champion = await resolveValue(participant.champion, "champion", `participants[${index}].champion`, {left: 89, top: row - 16, width: 32, height: 32});
     participant.primaryPerk = await resolveValue(participant.primaryPerk, "perk", `participants[${index}].primaryPerk`, {left: 18, top: row - 10, width: 20, height: 20});
     participant.summonerSpells = await resolveSlots(participant.summonerSpells, "spell", `participants[${index}].summonerSpells`, [{left: 43, top: row - 12, width: 11, height: 11}, {left: 43, top: row + 3, width: 11, height: 11}], false);
-    participant.items = await resolveSlots(participant.items, "item", `participants[${index}].items`, [284, 309, 334, 359, 384, 409].map((left) => ({left, top: row - 10, width: 22, height: 22})), true);
-    participant.trinket = await resolveNullable(participant.trinket, "trinket", `participants[${index}].trinket`, {left: 434, top: row - 10, width: 22, height: 22});
-    participant.questSlot = await resolveNullable(participant.questSlot, "quest", `participants[${index}].questSlot`, {left: 467, top: row - 10, width: 22, height: 22});
+    const inventory = inventoryCoordinates(row);
+    participant.items = await resolveSlots(participant.items, "item", `participants[${index}].items`, inventory.items, true);
+    participant.trinket = await resolveNullable(participant.trinket, "trinket", `participants[${index}].trinket`, inventory.trinket);
+    participant.questSlot = await resolveNullable(participant.questSlot, "quest", `participants[${index}].questSlot`, inventory.quest);
   }
   for (const team of ["BLUE", "RED"]) applyTeamSpellQuestConstraints(team);
   payload.participants.sort((left, right) => ["BLUE", "RED"].indexOf(left.team) - ["BLUE", "RED"].indexOf(right.team)
@@ -102,7 +107,7 @@ export async function resolveDataDragonAssets(input, options = {}) {
 async function runCli() {
   const argv = process.argv.slice(2);
   const inputPath = argv[0];
-  if (!inputPath || inputPath.startsWith("--")) fail("Usage: resolve-ddragon-assets.mjs <recognized.json> [--screenshot image.png] [--output resolved.json] [--cache directory] [--offset-y pixels] [--ban-offset-y pixels] [--allow-ambiguous] [--confidence-output report.json]");
+  if (!inputPath || inputPath.startsWith("--")) fail("Usage: resolve-ddragon-assets.mjs <recognized.json> [--screenshot image.png] [--output resolved.json] [--cache directory] [--offset-y pixels] [--ban-offset-y pixels] [--item-grid-left pixels] [--item-slot-gap pixels] [--allow-ambiguous] [--confidence-output report.json]");
   const screenshotPath = option(argv, "--screenshot");
   const outputPath = option(argv, "--output") ?? "resolved-match.json";
   const diagnosticsOutput = option(argv, "--diagnostics-output");
@@ -113,6 +118,8 @@ async function runCli() {
       cacheDir: option(argv, "--cache") ?? join(tmpdir(), "bibi-ddragon-cache"),
       offsetY: numberOption(argv, "--offset-y", 0),
       banOffsetY: numberOption(argv, "--ban-offset-y", numberOption(argv, "--offset-y", 0)),
+      itemGridLeft: numberOption(argv, "--item-grid-left", 281),
+      itemSlotGap: numberOption(argv, "--item-slot-gap", 25),
       allowAmbiguous: argv.includes("--allow-ambiguous"),
     });
     await writeFile(outputPath, `${JSON.stringify(result.payload, null, 2)}\n`, {mode: 0o600});
@@ -311,6 +318,15 @@ function applyTeamSpellQuestConstraints(team) {
   }
 }
 function banCoordinates(team) { const top = (team === "BLUE" ? 198 : 413) + banOffsetY; return [[845, top], [910, top], [975, top], [845, top + 35], [910, top + 35]].map(([left, y]) => ({left, top: y, width: 24, height: 24})); }
+function inventoryCoordinates(row) {
+  const standardInset = Math.max(2, Math.round(itemSlotGap * 3 / 25));
+  const questInset = Math.round(itemSlotGap * 9 / 25) + 2;
+  return {
+    items: Array.from({length: 6}, (_, index) => ({left: itemGridLeft + index * itemSlotGap + standardInset, top: row - 10, width: 22, height: 22})),
+    trinket: {left: itemGridLeft + 6 * itemSlotGap + standardInset, top: row - 10, width: 22, height: 22},
+    quest: {left: itemGridLeft + 7 * itemSlotGap + questInset, top: row - 10, width: 22, height: 22},
+  };
+}
 function normalize(value) { return String(value).normalize("NFC").trim().replace(/\s+/g, " ").toLocaleLowerCase("ko-KR"); }
 function candidate(id, name, iconPath, image, questRole = null) { return {id: String(id), name, iconPath, image, questRole}; }
 function questRoleForItem(id, entry) {

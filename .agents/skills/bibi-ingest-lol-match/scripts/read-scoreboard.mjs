@@ -16,6 +16,7 @@ import {
   parseDuration,
   parseInteger,
   REFERENCE_ROWS,
+  repairMissingParticipantTotals,
   validateMechanicalTotals,
 } from "./scoreboard-machine-core.mjs";
 import {resolveDataDragonAssets} from "./resolve-ddragon-assets.mjs";
@@ -36,7 +37,11 @@ export async function readScoreboardImage(original, options = {}) {
   const {data: normalizedRaw, info: normalizedInfo} = await sharp(normalized).removeAlpha().raw().toBuffer({resolveWithObject: true});
   const layout = detectScoreboardLayout(normalizedRaw, normalizedInfo);
   if (layout.confidence < 0.42) fail(`점수판 아이템 슬롯 앵커를 찾지 못했습니다. confidence=${layout.confidence.toFixed(2)}`);
+  // OCR columns move with the inventory grid, while the left-side icons and
+  // right-side panels remain fixed. Keep the globally aligned image for OCR,
+  // and a row-only aligned image for independently anchored asset crops.
   aligned = await alignToCanvas(normalized, normalizedInfo, layout.transform);
+  const assetAligned = await alignToCanvas(normalized, normalizedInfo, {...layout.transform, xScale: 1, xOffset: 0});
   const ocrCachePath = join(cacheRoot, "bibi-tesseract-cache");
   await mkdir(ocrCachePath, {recursive: true});
   const workers = await getWorkers(ocrCachePath, options.reuseWorkers ?? false);
@@ -54,9 +59,11 @@ export async function readScoreboardImage(original, options = {}) {
   let resolvedPayload = recognizedPayload;
   if (options.resolveAssets !== false) {
     const resolved = await resolveDataDragonAssets(recognizedPayload, {
-      screenshot: aligned,
+      screenshot: assetAligned,
       cacheDir: join(cacheRoot, "bibi-ddragon-cache"),
       allowAmbiguous: options.allowAmbiguous ?? true,
+      itemGridLeft: layout.source.itemGridLeft,
+      itemSlotGap: layout.source.itemSlotGap,
     });
     resolvedPayload = resolved.payload;
     report.assets = resolved.assets;
@@ -156,11 +163,11 @@ async function recognizeScoreboard(original) {
         textField(`participants.${index}.name`, nameRectangle),
         englishNameField(`participants.${index}.nameEnglish`, nameRectangle),
         numberField(`participants.${index}.level`, 72, row, 28),
-        numberField(`participants.${index}.kills`, 516, row, 22, {narrowRetry: true}),
-        numberField(`participants.${index}.deaths`, 551, row, 22, {narrowRetry: true}),
-        numberField(`participants.${index}.assists`, 594, row, 22, {narrowRetry: true}),
+        numberField(`participants.${index}.kills`, 516, row, 22, {narrowRetry: true, allowMissing: true}),
+        numberField(`participants.${index}.deaths`, 551, row, 22, {narrowRetry: true, allowMissing: true}),
+        numberField(`participants.${index}.assists`, 594, row, 22, {narrowRetry: true, allowMissing: true}),
         numberField(`participants.${index}.cs`, 661, row, 48),
-        numberField(`participants.${index}.gold`, 740, row, 64),
+        numberField(`participants.${index}.gold`, 740, row, 64, {allowMissing: true}),
       ]);
       const combinedName = `${englishNameResult.text.replace(/[^0-9a-z]/gi, "")}${nameResult.text.replace(/[^가-힣]/g, "")}`;
       const matches = [nameResult.text, englishNameResult.text, combinedName].map((name) => matchRegisteredPlayer(name, players)).filter(Boolean);
@@ -186,6 +193,9 @@ async function recognizeScoreboard(original) {
     }
   }
 
+  for (const repair of repairMissingParticipantTotals(teamStats, participants)) {
+    ocrLog.push({field: `participants.${repair.participantIndex}.${repair.field}.derived`, text: String(repair.value), confidence: 100});
+  }
   ensureNumbers(teamStats, participants);
   const totalErrors = validateMechanicalTotals(teamStats, participants);
   if (totalErrors.length) fail(`OCR 합계 검증에 실패했습니다:\n${totalErrors.map((error) => `- ${error}`).join("\n")}`);
@@ -220,7 +230,7 @@ async function runCli() {
   process.stdout.write(`Mechanical scoreboard read completed in ${result.report.elapsedMs}ms (alignment confidence ${(result.report.layout.confidence * 100).toFixed(0)}%).\n`);
 }
 
-async function numberField(field, centerX, centerY, width, {blankIsZero = false, narrowRetry = false} = {}) {
+async function numberField(field, centerX, centerY, width, {blankIsZero = false, narrowRetry = false, allowMissing = false} = {}) {
   let result = await textField(field, {left: Math.round(centerX - width / 2), top: centerY - 13, width, height: 26}, "number");
   let value = parseInteger(result.text);
   if (value === null && narrowRetry) {
@@ -228,6 +238,7 @@ async function numberField(field, centerX, centerY, width, {blankIsZero = false,
     value = parseInteger(result.text);
   }
   if (value === null && blankIsZero && result.text.trim() === "") return 0;
+  if (value === null && allowMissing) return null;
   if (value === null) fail(`${field} 숫자를 읽지 못했습니다.`);
   return value;
 }
@@ -301,10 +312,11 @@ async function loadPlayers(path) {
 
 function ensureNumbers(teamStats, participants) {
   const values = [
-    ...teamStats.flatMap((stats) => [stats.kills, stats.deaths, stats.assists, stats.goldTotal, ...Object.values(stats.objectives)]),
-    ...participants.flatMap((participant) => [participant.level, participant.kills, participant.deaths, participant.assists, participant.cs, participant.goldEarned]),
+    ...teamStats.flatMap((stats) => [[`${stats.team}.kills`, stats.kills], [`${stats.team}.deaths`, stats.deaths], [`${stats.team}.assists`, stats.assists], [`${stats.team}.goldTotal`, stats.goldTotal], ...Object.entries(stats.objectives).map(([field, value]) => [`${stats.team}.objectives.${field}`, value])]),
+    ...participants.flatMap((participant, index) => ["level", "kills", "deaths", "assists", "cs", "goldEarned"].map((field) => [`participants.${index}.${field}`, participant[field]])),
   ];
-  if (values.some((value) => !Number.isInteger(value) || value < 0)) fail("OCR 결과에 올바르지 않은 숫자가 있습니다.");
+  const invalid = values.filter(([, value]) => !Number.isInteger(value) || value < 0).map(([field]) => field);
+  if (invalid.length) fail(`OCR 결과에 올바르지 않은 숫자가 있습니다: ${invalid.join(", ")}`);
 }
 
 function compactOcrName(value) {
