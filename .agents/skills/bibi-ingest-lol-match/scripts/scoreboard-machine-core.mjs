@@ -226,12 +226,13 @@ export function selectTeamSpellQuestAssignments(participants) {
 }
 
 export function roleFromQuest(asset) {
-  const name = normalizeName(asset?.name);
-  if (name.includes(normalizeName("상단 공격로"))) return "TOP";
-  if (name.includes(normalizeName("정글 퀘스트"))) return "JUNGLE";
-  if (name.includes(normalizeName("중단 공격로"))) return "MIDDLE";
-  if (name.includes(normalizeName("하단 공격로"))) return "BOTTOM";
-  if (name.includes(normalizeName("서포터 퀘스트"))) return "UTILITY";
+  if (asset?.questRole) return asset.questRole;
+  const id = String(asset?.id ?? "");
+  if (["1200", "1220", "1221", "1222"].includes(id)) return "TOP";
+  if (["1204", "1209", "1210", "1211"].includes(id)) return "JUNGLE";
+  if (["1201", "1206"].includes(id)) return "MIDDLE";
+  if (["1202", "1207"].includes(id)) return "BOTTOM";
+  if (["1203", "1208", "2055"].includes(id)) return "UTILITY";
   return null;
 }
 
@@ -243,6 +244,11 @@ function spellQuestCombinations(spellSlots, questCandidates, requiredRole) {
     if (requiredRole && roleFromQuest(quest.candidate) !== requiredRole) continue;
     const hasSmite = isSmite(first.candidate) || isSmite(second.candidate);
     if (hasSmite !== isJungleQuest(quest.candidate)) continue;
+    if (roleFromQuest(quest.candidate) === "TOP") {
+      const teleported = isTeleport(first.candidate) || isTeleport(second.candidate);
+      const allowedIds = teleported ? ["1221", "1222"] : ["1200", "1220"];
+      if (!allowedIds.includes(String(quest.candidate.id))) continue;
+    }
     combinations.push({
       spells: [first, second],
       quest,
@@ -267,7 +273,12 @@ function isSmite(asset) {
 }
 
 function isJungleQuest(asset) {
-  return normalizeName(asset?.name).includes(normalizeName("정글 퀘스트"));
+  return roleFromQuest(asset) === "JUNGLE";
+}
+
+function isTeleport(asset) {
+  return normalizeName(asset?.name).includes(normalizeName("순간이동"))
+    || String(asset?.id ?? "").toLocaleLowerCase("en-US").includes("teleport");
 }
 
 function levenshtein(left, right) {

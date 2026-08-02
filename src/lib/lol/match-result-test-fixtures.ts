@@ -6,31 +6,42 @@ export const perk: LolAssetRef = {id: "8112", name: "감전", iconPath: "perk-im
 export const spell: LolAssetRef = {id: "SummonerFlash", name: "점멸", iconPath: "img/spell/SummonerFlash.png"};
 export const heal: LolAssetRef = {id: "SummonerHeal", name: "회복", iconPath: "img/spell/SummonerHeal.png"};
 export const smite: LolAssetRef = {id: "SummonerSmite", name: "강타", iconPath: "img/spell/SummonerSmite.png"};
+export const teleport: LolAssetRef = {id: "SummonerTeleport", name: "순간이동", iconPath: "img/spell/SummonerTeleport.png"};
 export const item: LolAssetRef = {id: "3089", name: "라바돈의 죽음모자", iconPath: "img/item/3089.png"};
+export const questByRole = {
+  TOP: {id: "1200", name: "상단 공격로 퀘스트", iconPath: "img/item/1200.png"},
+  JUNGLE: {id: "1204", name: "정글 퀘스트", iconPath: "img/item/1204.png"},
+  MIDDLE: {id: "1201", name: "중단 공격로 퀘스트", iconPath: "img/item/1201.png"},
+  BOTTOM: {id: "1202", name: "하단 공격로 퀘스트", iconPath: "img/item/1202.png"},
+  UTILITY: {id: "1203", name: "서포터 퀘스트", iconPath: "img/item/1203.png"},
+} satisfies Record<MatchResultParticipant["role"], LolAssetRef>;
 
 export function zeroObjectives() {
   return {turretsDestroyed: 0, inhibitorsDestroyed: 0, baronKills: 0, dragonKills: 0, riftHeraldKills: 0, voidGrubKills: 0};
 }
 
 export function makeMatchInput(players = makePlayers(), action: "validate" | "commit" = "validate") {
-  const participants = players.slice(0, 10).map((player, index) => ({
-    team: index < 5 ? "BLUE" : "RED",
-    role: (["TOP", "JUNGLE", "MIDDLE", "BOTTOM", "UTILITY"] as const)[index % 5],
-    observedName: player.riotGameName,
-    discordUserId: null as string | null,
-    champion: {...champion},
-    primaryPerk: {...perk},
-    summonerSpells: index % 5 === 1 ? [{...smite}, {...spell}] : [{...spell}, {...heal}],
-    level: 15,
-    kills: index < 5 ? index : index - 5,
-    deaths: 1,
-    assists: 2,
-    cs: 100 + index,
-    goldEarned: 10_000 + index,
-    items: [{...item}, null, null, null, null, null],
-    trinket: null,
-    questSlot: null,
-  }));
+  const participants = players.slice(0, 10).map((player, index) => {
+    const role = (["TOP", "JUNGLE", "MIDDLE", "BOTTOM", "UTILITY"] as const)[index % 5];
+    return {
+      team: index < 5 ? "BLUE" : "RED",
+      role,
+      observedName: player.riotGameName,
+      discordUserId: null as string | null,
+      champion: {...champion},
+      primaryPerk: {...perk},
+      summonerSpells: index % 5 === 1 ? [{...smite}, {...spell}] : [{...spell}, {...heal}],
+      level: 15,
+      kills: index < 5 ? index : index - 5,
+      deaths: 1,
+      assists: 2,
+      cs: 100 + index,
+      goldEarned: 10_000 + index,
+      items: [{...item}, null, null, null, null, null],
+      trinket: null,
+      questSlot: {...questByRole[role]},
+    };
+  });
   const totals = (team: "BLUE" | "RED") => {
     const members = participants.filter((participant) => participant.team === team);
     return {

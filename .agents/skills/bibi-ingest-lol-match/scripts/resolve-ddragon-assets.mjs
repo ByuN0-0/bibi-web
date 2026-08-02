@@ -52,9 +52,9 @@ export async function resolveDataDragonAssets(input, options = {}) {
   const champions = Object.values(championData.data).filter((entry) => !entry.id.includes("_")).map((entry) => candidate(entry.id, entry.name, `img/champion/${entry.image.full}`, entry.image));
   const allItems = Object.entries(itemData.data)
     .filter(([, entry]) => !entry.name.includes("<") && !entry.name.includes("Placeholder"))
-    .map(([id, entry]) => candidate(id, entry.name, `img/item/${entry.image.full}`, entry.image));
+    .map(([id, entry]) => candidate(id, entry.name, `img/item/${entry.image.full}`, entry.image, questRoleForItem(id, entry)));
   const summonerRiftItems = uniqueCandidates(allItems.filter((entry) => /^\d{4}$/.test(entry.id) && itemData.data[entry.id]?.maps?.["11"] === true));
-  const questItems = uniqueCandidates(allItems.filter((entry) => Number(entry.id) >= 1200 && Number(entry.id) <= 1222));
+  const questItems = uniqueCandidates(allItems.filter((entry) => entry.questRole));
   const trinkets = uniqueCandidates(allItems.filter((entry) => ["3340", "3363", "3364"].includes(entry.id)));
   catalogs = {
     champion: champions,
@@ -312,7 +312,15 @@ function applyTeamSpellQuestConstraints(team) {
 }
 function banCoordinates(team) { const top = (team === "BLUE" ? 198 : 413) + banOffsetY; return [[845, top], [910, top], [975, top], [845, top + 35], [910, top + 35]].map(([left, y]) => ({left, top: y, width: 24, height: 24})); }
 function normalize(value) { return String(value).normalize("NFC").trim().replace(/\s+/g, " ").toLocaleLowerCase("ko-KR"); }
-function candidate(id, name, iconPath, image) { return {id: String(id), name, iconPath, image}; }
+function candidate(id, name, iconPath, image, questRole = null) { return {id: String(id), name, iconPath, image, questRole}; }
+function questRoleForItem(id, entry) {
+  if (["1200", "1220", "1221", "1222"].includes(id)) return "TOP";
+  if (["1204", "1209", "1210", "1211"].includes(id)) return "JUNGLE";
+  if (["1201", "1206"].includes(id)) return "MIDDLE";
+  if (["1202", "1207"].includes(id) || (entry.tags?.includes("Boots") && entry.maps?.["11"] === true)) return "BOTTOM";
+  if (["1203", "1208", "2055"].includes(id)) return "UTILITY";
+  return null;
+}
 function uniqueCandidates(entries) {
   const seen = new Set();
   return entries.filter((entry) => {

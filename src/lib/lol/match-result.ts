@@ -11,6 +11,7 @@ import type {
   RiotAccountProfile,
 } from "@/lib/lol/types";
 import {MATCH_TEAMS, ROLES} from "@/lib/lol/types";
+import {participantRoleAssetError, roleFromQuestSlot} from "@/lib/lol/match-role-assets";
 
 const ASSET_PATH = /^(?:img\/(?:champion|item|spell)\/[A-Za-z0-9_.-]+\.png|perk-images\/[A-Za-z0-9_./-]+\.png)$/;
 const OBJECTIVE_FIELDS = [
@@ -188,7 +189,7 @@ function parseParticipants(value: unknown): ParsedMatchParticipant[] {
       ? text(participant.discordUserId, `participants[${index}].discordUserId`, 80)
       : null;
     const questSlot = nullableAssetRef(participant.questSlot, `participants[${index}].questSlot`);
-    const questRole = questSlot ? roleFromQuest(questSlot) : null;
+    const questRole = questSlot ? roleFromQuestSlot(questSlot) : null;
     const requestedRole = participant.role === undefined ? null : matchRole(participant.role, `participants[${index}].role`);
     if (questSlot && !questRole) throw new MatchResultError(`${participant.observedName ?? `participants[${index}]`}의 퀘스트가 포지션 퀘스트가 아닙니다.`);
     if (questRole && requestedRole && questRole !== requestedRole) throw new MatchResultError(`participants[${index}]의 포지션과 퀘스트가 일치하지 않습니다.`);
@@ -348,20 +349,10 @@ function validateParticipantRolesAndSpells(participants: ParsedMatchParticipant[
     for (const participant of members) {
       const spellIds = participant.summonerSpells.map((spell) => spell.id);
       if (new Set(spellIds).size !== spellIds.length) throw new MatchResultError(`${participant.observedName}의 소환사 주문이 중복되었습니다.`);
-      const hasSmite = participant.summonerSpells.some((spell) => spell.id.toLocaleLowerCase("en-US").includes("smite") || normalizePlayerName(spell.name) === normalizePlayerName("강타"));
-      if (hasSmite !== (participant.role === "JUNGLE")) throw new MatchResultError(`${participant.observedName}의 강타와 정글 포지션이 일치하지 않습니다.`);
+      const roleAssetError = participantRoleAssetError(participant);
+      if (roleAssetError) throw new MatchResultError(roleAssetError);
     }
   }
-}
-
-function roleFromQuest(asset: LolAssetRef): Role | null {
-  const name = normalizePlayerName(asset.name);
-  if (name.includes(normalizePlayerName("상단 공격로"))) return "TOP";
-  if (name.includes(normalizePlayerName("정글 퀘스트"))) return "JUNGLE";
-  if (name.includes(normalizePlayerName("중단 공격로"))) return "MIDDLE";
-  if (name.includes(normalizePlayerName("하단 공격로"))) return "BOTTOM";
-  if (name.includes(normalizePlayerName("서포터 퀘스트"))) return "UTILITY";
-  return null;
 }
 
 function matchRole(value: unknown, field: string): Role {

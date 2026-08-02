@@ -1,16 +1,16 @@
 import {describe, expect, it} from "vitest";
 import {bearerTokenMatches, createMatchResult, matchResultSourceHash, parseAdminMatchResultUpdate, parseMatchResultInput, prepareMatchResult} from "@/lib/lol/match-result";
-import {fixtureNow, makeMatchInput, makePlayers, makeStoredResult} from "@/lib/lol/match-result-test-fixtures";
+import {fixtureNow, makeMatchInput, makePlayers, makeStoredResult, teleport} from "@/lib/lol/match-result-test-fixtures";
 
 describe("match result ingestion", () => {
-  it("stores all fixed fields and permits empty item, trinket, quest and ban slots", () => {
+  it("stores all fixed fields and permits empty item, trinket and ban slots", () => {
     const players = makePlayers();
     const parsed = parseMatchResultInput(makeMatchInput(players));
     const prepared = prepareMatchResult(parsed, players);
     const result = createMatchResult(prepared, fixtureNow);
     expect(result).toMatchObject({schemaVersion: 4, playedOn: "2026-08-02", durationSeconds: 1800, ddragonVersion: "16.15.1"});
     expect(result).not.toHaveProperty("sessionId");
-    expect(result.participants[0]).toMatchObject({guest: false, trinket: null, questSlot: null});
+    expect(result.participants[0]).toMatchObject({guest: false, trinket: null, questSlot: {id: "1200"}});
     expect(result.participants[0].items).toHaveLength(6);
     expect(result.teamStats[0].bans).toHaveLength(5);
   });
@@ -72,9 +72,11 @@ describe("match result ingestion", () => {
 
   it("maps position quests to roles, rejects duplicates, and stores canonical role order", () => {
     const body = makeMatchInput();
+    const questIds = ["1200", "1204", "1201", "1202", "1203"];
     const questNames = ["상단 공격로 퀘스트", "정글 퀘스트", "중단 공격로 퀘스트", "하단 공격로 퀘스트", "서포터 퀘스트"];
     body.participants.forEach((participant, index) => {
-      participant.questSlot = {id: String(1200 + index % 5), name: questNames[index % 5], iconPath: `img/item/${1200 + index % 5}.png`};
+      const id = questIds[index % 5];
+      participant.questSlot = {id, name: questNames[index % 5], iconPath: `img/item/${id}.png`};
     });
     body.participants = [body.participants[3], body.participants[1], body.participants[4], body.participants[0], body.participants[2], ...body.participants.slice(5)];
     const parsed = parseMatchResultInput(body);
@@ -85,12 +87,38 @@ describe("match result ingestion", () => {
 
     const duplicate = makeMatchInput();
     duplicate.participants[4].role = "BOTTOM";
+    duplicate.participants[4].questSlot = {id: "1202", name: "하단 공격로 퀘스트", iconPath: "img/item/1202.png"};
     expect(() => parseMatchResultInput(duplicate)).toThrow("각각 한 명씩 포함");
 
     const duplicateQuest = makeMatchInput();
     delete (duplicateQuest.participants[4] as Partial<typeof duplicateQuest.participants[number]>).role;
     duplicateQuest.participants[4].questSlot = {id: "1202", name: "하단 공격로 퀘스트", iconPath: "img/item/1202.png"};
     expect(() => parseMatchResultInput(duplicateQuest)).toThrow("각각 한 명씩 포함");
+  });
+
+  it("applies exact role quest rules including teleport, boots and control wards", () => {
+    const withTeleport = makeMatchInput();
+    withTeleport.participants[0].summonerSpells = [{...teleport}, withTeleport.participants[0].summonerSpells[1]];
+    expect(() => parseMatchResultInput(withTeleport)).toThrow("포지션과 퀘스트 슬롯이 일치하지 않습니다");
+    withTeleport.participants[0].questSlot = {id: "1221", name: "상단 공격로 퀘스트 보상", iconPath: "img/item/1221.png"};
+    expect(parseMatchResultInput(withTeleport).participants[0].role).toBe("TOP");
+
+    const alternatives = makeMatchInput();
+    alternatives.participants[3].questSlot = {id: "3006", name: "광전사의 군화", iconPath: "img/item/3006.png"};
+    alternatives.participants[4].questSlot = {id: "2055", name: "제어 와드", iconPath: "img/item/2055.png"};
+    expect(parseMatchResultInput(alternatives).participants.slice(3, 5).map((participant) => participant.role)).toEqual(["BOTTOM", "UTILITY"]);
+
+    const invalidJungle = makeMatchInput();
+    invalidJungle.participants[1].questSlot = {id: "1205", name: "정글 퀘스트 보상", iconPath: "img/item/1205.png"};
+    expect(() => parseMatchResultInput(invalidJungle)).toThrow("포지션 퀘스트가 아닙니다");
+  });
+
+  it("accepts only the three scoreboard trinkets", () => {
+    const body = makeMatchInput();
+    body.participants[0].trinket = {id: "3340", name: "투명 와드", iconPath: "img/item/3340.png"};
+    expect(parseMatchResultInput(body).participants[0].trinket?.id).toBe("3340");
+    body.participants[0].trinket = {id: "2055", name: "제어 와드", iconPath: "img/item/2055.png"};
+    expect(() => parseMatchResultInput(body)).toThrow("장신구 슬롯에는");
   });
 
   it("creates stable hashes and validates bearer tokens", () => {

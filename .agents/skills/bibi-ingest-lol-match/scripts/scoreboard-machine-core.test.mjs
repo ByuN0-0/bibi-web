@@ -43,6 +43,7 @@ describe("summoner spell and quest constraints", () => {
   const flash = scored("SummonerFlash", "점멸", 10);
   const heal = scored("SummonerHeal", "회복", 12);
   const smite = scored("SummonerSmite", "강타", 20);
+  const teleport = scored("SummonerTeleport", "순간이동", 8);
   const topQuest = scored("1200", "상단 공격로 퀘스트", 5);
   const jungleQuest = scored("1204", "정글 퀘스트", 8);
 
@@ -65,6 +66,19 @@ describe("summoner spell and quest constraints", () => {
   it("selects a non-jungle quest when neither spell is Smite", () => {
     const result = selectSpellQuestCombination([[flash], [heal]], [jungleQuest, topQuest]);
     expect(result.quest.candidate.id).toBe("1200");
+  });
+
+  it("uses teleport presence only to narrow the four top quest IDs", () => {
+    const topCandidates = ["1200", "1220", "1221", "1222"].map((id, index) => scored(id, "상단 공격로 퀘스트", index));
+    expect(selectSpellQuestCombination([[flash], [heal]], topCandidates, "TOP").quest.candidate.id).toBe("1200");
+    expect(selectSpellQuestCombination([[flash], [teleport]], topCandidates, "TOP").quest.candidate.id).toBe("1221");
+    expect(topCandidates.every((quest) => roleFromQuest(quest.candidate) === "TOP")).toBe(true);
+  });
+
+  it("maps boots and control wards in the quest slot to bottom and support", () => {
+    expect(roleFromQuest({id: "3006", name: "광전사의 군화", questRole: "BOTTOM"})).toBe("BOTTOM");
+    expect(roleFromQuest({id: "2055", name: "제어 와드"})).toBe("UTILITY");
+    expect(roleFromQuest({id: "1205", name: "정글 퀘스트 보상"})).toBeNull();
   });
 
   it("forbids Smite when the quest slot is empty", () => {
