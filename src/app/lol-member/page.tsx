@@ -27,7 +27,7 @@ export default async function LolMemberPage({searchParams}: {searchParams: Promi
   return (
     <div className="min-h-screen bg-[var(--surface-soft)]">
       <Header />
-      <main className="page-shell pb-14 pt-24 sm:pb-16 sm:pt-28">
+      <main className="page-shell pb-14 pt-20 sm:pb-16 sm:pt-24">
         <div className="mb-5 flex flex-col justify-between gap-3 sm:flex-row sm:items-end">
           <div>
             <p className="eyebrow">BIBI LoL</p>

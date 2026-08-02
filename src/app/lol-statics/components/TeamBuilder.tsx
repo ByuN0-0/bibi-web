@@ -90,6 +90,13 @@ export default function TeamBuilder({players, publicMode = false}: {players: Pla
             {selected.length} / 10
           </span>
         </div>
+        <div className={`mt-3 flex flex-wrap items-center gap-2 ${publicMode ? "max-sm:hidden" : ""}`}>
+          <button disabled={pending || selected.length !== 10 || draft?.status === "CONFIRMED"} onClick={() => act("generate")} className="primary-button min-h-10 px-4">팀 생성</button>
+          <button disabled={pending || !draft || draft.status === "CONFIRMED"} onClick={() => act("reroll")} className="secondary-button min-h-10 px-4">다시 편성</button>
+          {!publicMode && <button disabled={pending || !draft || draft.status === "CONFIRMED"} onClick={() => act("confirm")} className="secondary-button min-h-10 border-[#8bc9ad] px-4 text-[var(--success)]">확정</button>}
+          {pending && <span className="self-center text-xs text-[var(--muted)]" aria-live="polite">계산 중…</span>}
+        </div>
+        {error && <p role="alert" className="mt-3 rounded-lg border border-[#f2b8aa] bg-[var(--error-soft)] px-3 py-2 text-sm text-[var(--error)]">{error}</p>}
         {mobileListCollapsed && draft?.composition && <div className="mt-3 flex items-center justify-between rounded-lg bg-[var(--surface-soft)] p-2.5 sm:hidden"><p className="text-sm font-semibold">10명 선택 완료</p><button type="button" onClick={() => setMobileListCollapsed(false)} className="text-xs font-bold text-[var(--primary)]">선수 변경</button></div>}
         <div className={`mt-3 gap-1.5 sm:grid sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-2 ${mobileListCollapsed && draft?.composition ? "hidden" : "grid"}`}>
           {players.map((player) => {
@@ -118,13 +125,6 @@ export default function TeamBuilder({players, publicMode = false}: {players: Pla
           })}
           {!players.length && <p className="col-span-full rounded-xl border border-dashed border-[var(--hairline)] bg-[var(--surface-soft)] p-8 text-center text-sm text-[var(--muted)]">등록된 선수가 없습니다.</p>}
         </div>
-        <div className={`mt-4 flex flex-wrap gap-2 ${publicMode ? "max-sm:hidden" : ""}`}>
-          <button disabled={pending || selected.length !== 10 || draft?.status === "CONFIRMED"} onClick={() => act("generate")} className="primary-button">팀 생성</button>
-          <button disabled={pending || !draft || draft.status === "CONFIRMED"} onClick={() => act("reroll")} className="secondary-button">다시 편성</button>
-          {!publicMode && <button disabled={pending || !draft || draft.status === "CONFIRMED"} onClick={() => act("confirm")} className="secondary-button border-[#8bc9ad] text-[var(--success)]">확정</button>}
-          {pending && <span className="self-center text-xs text-[var(--muted)]" aria-live="polite">계산 중…</span>}
-        </div>
-        {error && <p role="alert" className="mt-4 rounded-xl border border-[#f2b8aa] bg-[var(--error-soft)] px-4 py-3 text-sm text-[var(--error)]">{error}</p>}
       </div>
 
       <div ref={resultRef} className="surface-card scroll-mt-24 p-4">
@@ -168,9 +168,9 @@ function Team({title, color, assignments}: {title: string; color: "blue" | "red"
       <div className="mt-2 space-y-1.5">
         {assignments.map((player) => {
           return (
-            <div key={player.role} className="flex min-h-[58px] items-center gap-2.5 rounded-lg border border-black/[0.05] bg-white px-2.5 py-2 text-[var(--ink)]">
+            <div key={player.role} className="flex h-16 items-center gap-2.5 rounded-lg border border-black/[0.05] bg-white px-2.5 py-2 text-[var(--ink)]">
               <RankTierIcon rank={player.rank} size={36} />
-              <div className="min-w-0 flex-1"><div className="flex items-center justify-between gap-2"><span className="text-[11px] font-bold text-[var(--muted)]">{ROLE_LABEL[player.role]}</span><span className="truncate text-[10px] text-[var(--muted)]">{player.rankQueue === "SOLO" ? "솔랭" : player.rankQueue === "FLEX" ? "자랭" : "랭크"} · {player.rank}</span></div><p className="mt-0.5 truncate text-sm font-semibold">{player.displayName}</p>{(player.offRole || player.lowConfidence) && <div className="mt-1 flex gap-1">{player.offRole && <span className="rounded bg-[var(--warning-soft)] px-1.5 py-0.5 text-[9px] font-bold text-[var(--warning)]">오프롤</span>}{player.lowConfidence && <span className="rounded bg-[var(--warning-soft)] px-1.5 py-0.5 text-[9px] font-bold text-[var(--warning)]">낮은 신뢰도</span>}</div>}</div>
+              <div className="min-w-0 flex-1"><div className="flex items-center justify-between gap-2"><span className="text-[11px] font-bold text-[var(--muted)]">{ROLE_LABEL[player.role]}</span><span className="truncate text-[10px] text-[var(--muted)]">{player.rankQueue === "SOLO" ? "솔랭" : player.rankQueue === "FLEX" ? "자랭" : "랭크"} · {player.rank}</span></div><div className="mt-0.5 flex min-w-0 items-center gap-1"><p className="min-w-0 flex-1 truncate text-sm font-semibold">{player.displayName}</p>{player.offRole && <span className="shrink-0 rounded bg-[var(--warning-soft)] px-1.5 py-0.5 text-[9px] font-bold text-[var(--warning)]">오프롤</span>}{player.lowConfidence && <span className="shrink-0 rounded bg-[var(--warning-soft)] px-1.5 py-0.5 text-[9px] font-bold text-[var(--warning)]">낮은 신뢰도</span>}</div></div>
             </div>
           );
         })}
