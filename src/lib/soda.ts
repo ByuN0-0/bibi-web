@@ -1,7 +1,8 @@
 import "server-only";
 import {getServerEnv} from "@/lib/server-env";
+import {parseSodaDocuments, type SodaDocument} from "@/lib/soda-document";
 
-export type SodaDocument<T> = {id: string; etag: string; value: T};
+export type {SodaDocument} from "@/lib/soda-document";
 
 class SodaClient {
   private get env() {
@@ -109,12 +110,7 @@ class SodaClient {
   }
 
   private parse<T>(payload: unknown): SodaDocument<T>[] {
-    const items = (payload as {items?: Array<Record<string, unknown>>})?.items ?? [];
-    return items.map((item) => {
-      let value = item.value ?? item.content ?? item;
-      if (typeof value === "string") value = JSON.parse(value);
-      return {id: String(item.id ?? ""), etag: String(item.etag ?? ""), value: value as T};
-    });
+    return parseSodaDocuments<T>(payload);
   }
 }
 
