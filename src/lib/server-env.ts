@@ -17,8 +17,13 @@ export type RiotServerEnv = {
   timeoutMs: number;
 };
 
+export type IngestServerEnv = {
+  token: string;
+};
+
 let cached: ServerEnv | null = null;
 let cachedRiot: RiotServerEnv | null = null;
+let cachedIngest: IngestServerEnv | null = null;
 
 export function getServerEnv(): ServerEnv {
   if (cached) return cached;
@@ -78,4 +83,13 @@ export function getRiotServerEnv(): RiotServerEnv {
     timeoutMs: timeout * 1000,
   };
   return cachedRiot;
+}
+
+export function getIngestServerEnv(): IngestServerEnv {
+  if (cachedIngest) return cachedIngest;
+  const token = process.env.BIBI_INGEST_TOKEN?.trim();
+  if (!token) throw new Error("Missing required environment variable: BIBI_INGEST_TOKEN");
+  if (token.length < 32) throw new Error("BIBI_INGEST_TOKEN must be at least 32 characters");
+  cachedIngest = {token};
+  return cachedIngest;
 }

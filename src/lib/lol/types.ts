@@ -1,6 +1,8 @@
 export const ALGORITHM_VERSION = "team-balancing-v1";
 export const ROLES = ["TOP", "JUNGLE", "MIDDLE", "BOTTOM", "UTILITY"] as const;
 export type Role = (typeof ROLES)[number];
+export const MATCH_TEAMS = ["BLUE", "RED"] as const;
+export type MatchTeam = (typeof MATCH_TEAMS)[number];
 
 export const ROLE_LABEL: Record<Role, string> = {
   TOP: "탑",
@@ -110,6 +112,89 @@ export type TeamSession = {
   hostDiscordUserId: string;
   composition: TeamComposition;
   confirmedAt: number;
+};
+
+export type LolAssetRef = {
+  id: string;
+  name: string;
+  iconPath: string;
+};
+
+export type MatchObjectives = {
+  turretsDestroyed: number;
+  inhibitorsDestroyed: number;
+  baronKills: number;
+  dragonKills: number;
+  riftHeraldKills: number;
+  voidGrubKills: number;
+};
+
+export type MatchResultParticipant = {
+  team: MatchTeam;
+  observedName: string;
+  discordUserId: string | null;
+  guest: boolean;
+  champion: LolAssetRef;
+  primaryPerk: LolAssetRef;
+  summonerSpells: [LolAssetRef, LolAssetRef];
+  level: number;
+  kills: number;
+  deaths: number;
+  assists: number;
+  cs: number;
+  goldEarned: number;
+  items: [
+    LolAssetRef | null,
+    LolAssetRef | null,
+    LolAssetRef | null,
+    LolAssetRef | null,
+    LolAssetRef | null,
+    LolAssetRef | null,
+  ];
+  trinket: LolAssetRef | null;
+  questSlot: LolAssetRef | null;
+};
+
+export type MatchResultTeamStats = {
+  team: MatchTeam;
+  kills: number;
+  deaths: number;
+  assists: number;
+  goldTotal: number;
+  bans: [
+    LolAssetRef | null,
+    LolAssetRef | null,
+    LolAssetRef | null,
+    LolAssetRef | null,
+    LolAssetRef | null,
+  ];
+  objectives: MatchObjectives;
+};
+
+export type MatchResultCorrection = {
+  revision: number;
+  correctedAt: number;
+  correctedBy: "web-admin";
+};
+
+export type MatchResult = {
+  schemaVersion: number;
+  matchResultId: string;
+  ingestionId: string;
+  sourceHash: string;
+  sessionId: string;
+  source: "CHAT_SCREENSHOT";
+  playedOn: string;
+  winner: MatchTeam;
+  durationSeconds: number;
+  ddragonVersion: string;
+  teamStats: MatchResultTeamStats[];
+  participants: MatchResultParticipant[];
+  revision: number;
+  correctedBy: "ingest-api" | "web-admin";
+  corrections: MatchResultCorrection[];
+  createdAt: number;
+  updatedAt: number;
 };
 
 export type SystemStatus = {

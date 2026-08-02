@@ -1,6 +1,7 @@
 import "server-only";
 import {soda, type SodaDocument} from "@/lib/soda";
 import type {
+  MatchResult,
   PlayerProfile,
   SystemStatus,
   TeamDraft,
@@ -16,6 +17,7 @@ export const COLLECTIONS = {
   players: "bibi_lol_players",
   drafts: "bibi_lol_team_drafts",
   sessions: "bibi_lol_team_sessions",
+  matchResults: "bibi_lol_match_results",
   status: "bibi_lol_system_status",
   loginAttempts: "bibi_web_login_attempts",
 } as const;
@@ -165,11 +167,19 @@ export async function deletePlayer(discordUserId: string) {
   await Promise.all([
     ensureCollection(COLLECTIONS.sessions),
     ensureCollection(COLLECTIONS.drafts),
+    ensureCollection(COLLECTIONS.matchResults),
   ]);
   const sessions = await soda.list<TeamSession>(COLLECTIONS.sessions);
   const drafts = await soda.list<TeamDraft>(COLLECTIONS.drafts);
+  const resultSessionIds = new Set(
+    (await soda.list<MatchResult>(COLLECTIONS.matchResults))
+      .map((document) => document.value.sessionId),
+  );
   await Promise.all([
-    ...sessions.filter((document) => hasPlayer(document.value, discordUserId))
+    ...sessions.filter((document) => (
+      hasPlayer(document.value, discordUserId)
+      && !resultSessionIds.has(document.value.sessionId)
+    ))
       .map((document) => soda.delete(COLLECTIONS.sessions, document)),
     ...drafts.filter((document) => document.value.selectedDiscordUserIds.includes(discordUserId))
       .map((document) => soda.delete(COLLECTIONS.drafts, document)),
@@ -196,6 +206,43 @@ export async function listAllSessions(): Promise<TeamSession[]> {
 export async function saveSession(session: TeamSession) {
   await ensureCollection(COLLECTIONS.sessions);
   await soda.insert(COLLECTIONS.sessions, session);
+}
+
+export async function listMatchResults(): Promise<MatchResult[]> {
+  await ensureCollection(COLLECTIONS.matchResults);
+  return (await soda.list<MatchResult>(COLLECTIONS.matchResults))
+    .map((document) => document.value)
+    .sort((left, right) => right.playedOn.localeCompare(left.playedOn) || right.createdAt - left.createdAt);
+}
+
+export async function findMatchResult(matchResultId: string) {
+  await ensureCollection(COLLECTIONS.matchResults);
+  return findOne<MatchResult>(COLLECTIONS.matchResults, {matchResultId});
+}
+
+export async function findMatchResultByIngestionId(ingestionId: string) {
+  await ensureCollection(COLLECTIONS.matchResults);
+  return findOne<MatchResult>(COLLECTIONS.matchResults, {ingestionId});
+}
+
+export async function saveMatchResult(result: MatchResult) {
+  await ensureCollection(COLLECTIONS.matchResults);
+  const [sameIngestion, sameSession] = await Promise.all([
+    findOne<MatchResult>(COLLECTIONS.matchResults, {ingestionId: result.ingestionId}),
+    findOne<MatchResult>(COLLECTIONS.matchResults, {sessionId: result.sessionId}),
+  ]);
+  if (sameIngestion) return {created: false as const, result: sameIngestion.value};
+  if (sameSession) throw new Error("MATCH_RESULT_SESSION_CONFLICT");
+  await soda.insert(COLLECTIONS.matchResults, result);
+  return {created: true as const, result};
+}
+
+export async function replaceMatchResult(
+  document: SodaDocument<MatchResult>,
+  result: MatchResult,
+) {
+  await ensureCollection(COLLECTIONS.matchResults);
+  await soda.replace(COLLECTIONS.matchResults, document, result);
 }
 
 export async function findDraft(draftId: string) {
