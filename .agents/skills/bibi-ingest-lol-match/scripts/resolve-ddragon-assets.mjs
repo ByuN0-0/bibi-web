@@ -3,6 +3,7 @@ import {createHash} from "node:crypto";
 import {mkdir, readFile, writeFile} from "node:fs/promises";
 import {tmpdir} from "node:os";
 import {join} from "node:path";
+import {pathToFileURL} from "node:url";
 import {MATCH_ROLE_ORDER, selectTeamSpellQuestAssignments} from "./scoreboard-machine-core.mjs";
 
 const ORIGIN = "https://ddragon.leagueoflegends.com";
@@ -10,85 +11,118 @@ const binaryCache = new Map();
 const iconCache = new Map();
 let normalizedScreenPromise;
 let sharpPromise;
-const argv = process.argv.slice(2);
-const inputPath = argv[0];
-const screenshotPath = option("--screenshot");
-const outputPath = option("--output") ?? "resolved-match.json";
-const diagnosticsOutput = option("--diagnostics-output");
-const confidenceOutput = option("--confidence-output");
-const cacheDir = option("--cache") ?? join(tmpdir(), "bibi-ddragon-cache");
-const offsetY = numberOption("--offset-y", 0);
-const banOffsetY = numberOption("--ban-offset-y", offsetY);
-const allowAmbiguous = argv.includes("--allow-ambiguous");
-if (!inputPath || inputPath.startsWith("--")) fail("Usage: resolve-ddragon-assets.mjs <recognized.json> [--screenshot image.png] [--output resolved.json] [--cache directory] [--offset-y pixels] [--ban-offset-y pixels] [--allow-ambiguous] [--confidence-output report.json]");
+let cacheDir;
+let offsetY;
+let banOffsetY;
+let allowAmbiguous;
+let payload;
+let version;
+let catalogs;
+let screenshot;
+let unresolved;
+let resolutions;
+let candidatePools;
+let resolutionByField;
 
-await mkdir(cacheDir, {recursive: true});
-const payload = JSON.parse(await readFile(inputPath, "utf8"));
-const versions = await cachedJson(`${ORIGIN}/api/versions.json`, join(cacheDir, "versions.json"));
-payload.ddragonVersion ||= versions[0];
-if (!versions.includes(payload.ddragonVersion)) fail(`Unknown Data Dragon version: ${payload.ddragonVersion}`);
-const version = payload.ddragonVersion;
-const dataBase = `${ORIGIN}/cdn/${version}/data/ko_KR`;
-const [championData, itemData, spellData, runeTrees] = await Promise.all([
-  cachedJson(`${dataBase}/champion.json`, join(cacheDir, `${version}-champion.json`)),
-  cachedJson(`${dataBase}/item.json`, join(cacheDir, `${version}-item.json`)),
-  cachedJson(`${dataBase}/summoner.json`, join(cacheDir, `${version}-summoner.json`)),
-  cachedJson(`${dataBase}/runesReforged.json`, join(cacheDir, `${version}-runes.json`)),
-]);
+export async function resolveDataDragonAssets(input, options = {}) {
+  cacheDir = options.cacheDir ?? join(tmpdir(), "bibi-ddragon-cache");
+  offsetY = options.offsetY ?? 0;
+  banOffsetY = options.banOffsetY ?? offsetY;
+  allowAmbiguous = options.allowAmbiguous ?? false;
+  payload = structuredClone(input);
+  screenshot = options.screenshot ?? null;
+  normalizedScreenPromise = undefined;
+  unresolved = [];
+  resolutions = [];
+  candidatePools = new Map();
+  resolutionByField = new Map();
+  await mkdir(cacheDir, {recursive: true});
 
-const champions = Object.values(championData.data).filter((entry) => !entry.id.includes("_")).map((entry) => candidate(entry.id, entry.name, `img/champion/${entry.image.full}`, entry.image));
-const allItems = Object.entries(itemData.data)
-  .filter(([, entry]) => !entry.name.includes("<") && !entry.name.includes("Placeholder"))
-  .map(([id, entry]) => candidate(id, entry.name, `img/item/${entry.image.full}`, entry.image));
-const summonerRiftItems = uniqueCandidates(allItems.filter((entry) => /^\d{4}$/.test(entry.id) && itemData.data[entry.id]?.maps?.["11"] === true));
-const questItems = uniqueCandidates(allItems.filter((entry) => Number(entry.id) >= 1200 && Number(entry.id) <= 1222));
-const trinkets = uniqueCandidates(allItems.filter((entry) => ["3340", "3363", "3364"].includes(entry.id)));
-const catalogs = {
-  champion: champions,
-  ban: champions,
-  item: summonerRiftItems,
-  quest: questItems,
-  trinket: trinkets,
-  spell: Object.values(spellData.data).filter((entry) => entry.modes?.includes("CLASSIC")).map((entry) => candidate(entry.id, entry.name, `img/spell/${entry.image.full}`, entry.image)),
-  perk: runeTrees.flatMap((tree) => tree.slots[0]?.runes ?? []).map((entry) => candidate(String(entry.id), entry.name, entry.icon, null)),
-};
-const screenshot = screenshotPath ? await readFile(screenshotPath) : null;
-if (!payload.ingestionId) {
-  if (!screenshot) fail("ingestionId is required when --screenshot is omitted.");
-  payload.ingestionId = `lol-scoreboard:${createHash("sha256").update(screenshot).digest("hex")}`;
+  const versions = await cachedJson(`${ORIGIN}/api/versions.json`, join(cacheDir, "versions.json"));
+  payload.ddragonVersion ||= versions[0];
+  if (!versions.includes(payload.ddragonVersion)) fail(`Unknown Data Dragon version: ${payload.ddragonVersion}`);
+  version = payload.ddragonVersion;
+  const dataBase = `${ORIGIN}/cdn/${version}/data/ko_KR`;
+  const [championData, itemData, spellData, runeTrees] = await Promise.all([
+    cachedJson(`${dataBase}/champion.json`, join(cacheDir, `${version}-champion.json`)),
+    cachedJson(`${dataBase}/item.json`, join(cacheDir, `${version}-item.json`)),
+    cachedJson(`${dataBase}/summoner.json`, join(cacheDir, `${version}-summoner.json`)),
+    cachedJson(`${dataBase}/runesReforged.json`, join(cacheDir, `${version}-runes.json`)),
+  ]);
+  const champions = Object.values(championData.data).filter((entry) => !entry.id.includes("_")).map((entry) => candidate(entry.id, entry.name, `img/champion/${entry.image.full}`, entry.image));
+  const allItems = Object.entries(itemData.data)
+    .filter(([, entry]) => !entry.name.includes("<") && !entry.name.includes("Placeholder"))
+    .map(([id, entry]) => candidate(id, entry.name, `img/item/${entry.image.full}`, entry.image));
+  const summonerRiftItems = uniqueCandidates(allItems.filter((entry) => /^\d{4}$/.test(entry.id) && itemData.data[entry.id]?.maps?.["11"] === true));
+  const questItems = uniqueCandidates(allItems.filter((entry) => Number(entry.id) >= 1200 && Number(entry.id) <= 1222));
+  const trinkets = uniqueCandidates(allItems.filter((entry) => ["3340", "3363", "3364"].includes(entry.id)));
+  catalogs = {
+    champion: champions,
+    ban: champions,
+    item: summonerRiftItems,
+    quest: questItems,
+    trinket: trinkets,
+    spell: Object.values(spellData.data).filter((entry) => entry.modes?.includes("CLASSIC")).map((entry) => candidate(entry.id, entry.name, `img/spell/${entry.image.full}`, entry.image)),
+    perk: runeTrees.flatMap((tree) => tree.slots[0]?.runes ?? []).map((entry) => candidate(String(entry.id), entry.name, entry.icon, null)),
+  };
+  if (!payload.ingestionId) {
+    if (!screenshot) fail("ingestionId is required when --screenshot is omitted.");
+    payload.ingestionId = `lol-scoreboard:${createHash("sha256").update(screenshot).digest("hex")}`;
+  }
+
+  for (const [teamIndex, team] of payload.teamStats.entries()) {
+    team.bans = await resolveSlots(team.bans, "ban", `teamStats[${teamIndex}].bans`, banCoordinates(team.team), true);
+  }
+  const originalParticipants = [...payload.participants];
+  const teamRowIndex = {BLUE: 0, RED: 0};
+  for (const [index, participant] of payload.participants.entries()) {
+    if (!(participant.team in teamRowIndex)) fail(`participants[${index}].team must be BLUE or RED.`);
+    const teamOffset = teamRowIndex[participant.team]++;
+    if (teamOffset > 4) fail(`${participant.team} contains more than five participant rows.`);
+    const row = (participant.team === "BLUE" ? [207, 242, 277, 312, 347] : [422, 457, 492, 527, 562])[teamOffset] + offsetY;
+    participant.champion = await resolveValue(participant.champion, "champion", `participants[${index}].champion`, {left: 89, top: row - 16, width: 32, height: 32});
+    participant.primaryPerk = await resolveValue(participant.primaryPerk, "perk", `participants[${index}].primaryPerk`, {left: 18, top: row - 10, width: 20, height: 20});
+    participant.summonerSpells = await resolveSlots(participant.summonerSpells, "spell", `participants[${index}].summonerSpells`, [{left: 43, top: row - 12, width: 11, height: 11}, {left: 43, top: row + 3, width: 11, height: 11}], false);
+    participant.items = await resolveSlots(participant.items, "item", `participants[${index}].items`, [284, 309, 334, 359, 384, 409].map((left) => ({left, top: row - 10, width: 22, height: 22})), true);
+    participant.trinket = await resolveNullable(participant.trinket, "trinket", `participants[${index}].trinket`, {left: 434, top: row - 10, width: 22, height: 22});
+    participant.questSlot = await resolveNullable(participant.questSlot, "quest", `participants[${index}].questSlot`, {left: 467, top: row - 10, width: 22, height: 22});
+  }
+  for (const team of ["BLUE", "RED"]) applyTeamSpellQuestConstraints(team);
+  payload.participants.sort((left, right) => ["BLUE", "RED"].indexOf(left.team) - ["BLUE", "RED"].indexOf(right.team)
+    || MATCH_ROLE_ORDER.indexOf(left.role) - MATCH_ROLE_ORDER.indexOf(right.role));
+  const newIndexByParticipant = new Map(payload.participants.map((participant, index) => [participant, index]));
+  const oldToNew = new Map(originalParticipants.map((participant, index) => [index, newIndexByParticipant.get(participant)]));
+  for (const resolution of resolutions) {
+    resolution.field = resolution.field.replace(/^participants\[(\d+)]/, (_, rawIndex) => `participants[${oldToNew.get(Number(rawIndex))}]`);
+  }
+  if (unresolved.length) fail(`Unresolved or ambiguous assets:\n${unresolved.map((entry) => `- ${entry}`).join("\n")}`);
+  return {payload, assets: resolutions, version};
 }
 
-const unresolved = [];
-const resolutions = [];
-const candidatePools = new Map();
-const resolutionByField = new Map();
-for (const [teamIndex, team] of payload.teamStats.entries()) {
-  team.bans = await resolveSlots(team.bans, "ban", `teamStats[${teamIndex}].bans`, banCoordinates(team.team), true);
+async function runCli() {
+  const argv = process.argv.slice(2);
+  const inputPath = argv[0];
+  if (!inputPath || inputPath.startsWith("--")) fail("Usage: resolve-ddragon-assets.mjs <recognized.json> [--screenshot image.png] [--output resolved.json] [--cache directory] [--offset-y pixels] [--ban-offset-y pixels] [--allow-ambiguous] [--confidence-output report.json]");
+  const screenshotPath = option(argv, "--screenshot");
+  const outputPath = option(argv, "--output") ?? "resolved-match.json";
+  const diagnosticsOutput = option(argv, "--diagnostics-output");
+  const confidenceOutput = option(argv, "--confidence-output");
+  try {
+    const result = await resolveDataDragonAssets(JSON.parse(await readFile(inputPath, "utf8")), {
+      screenshot: screenshotPath ? await readFile(screenshotPath) : null,
+      cacheDir: option(argv, "--cache") ?? join(tmpdir(), "bibi-ddragon-cache"),
+      offsetY: numberOption(argv, "--offset-y", 0),
+      banOffsetY: numberOption(argv, "--ban-offset-y", numberOption(argv, "--offset-y", 0)),
+      allowAmbiguous: argv.includes("--allow-ambiguous"),
+    });
+    await writeFile(outputPath, `${JSON.stringify(result.payload, null, 2)}\n`, {mode: 0o600});
+    if (confidenceOutput) await writeFile(confidenceOutput, `${JSON.stringify({assets: result.assets}, null, 2)}\n`, {mode: 0o600});
+    process.stdout.write(`Resolved Data Dragon ${result.version} assets into ${outputPath}\n`);
+  } catch (error) {
+    if (diagnosticsOutput && payload) await writeFile(diagnosticsOutput, `${JSON.stringify(payload, null, 2)}\n`, {mode: 0o600});
+    throw error;
+  }
 }
-const teamRowIndex = {BLUE: 0, RED: 0};
-for (const [index, participant] of payload.participants.entries()) {
-  if (!(participant.team in teamRowIndex)) fail(`participants[${index}].team must be BLUE or RED.`);
-  const teamOffset = teamRowIndex[participant.team]++;
-  if (teamOffset > 4) fail(`${participant.team} contains more than five participant rows.`);
-  const row = (participant.team === "BLUE" ? [207, 242, 277, 312, 347] : [422, 457, 492, 527, 562])[teamOffset] + offsetY;
-  participant.champion = await resolveValue(participant.champion, "champion", `participants[${index}].champion`, {left: 89, top: row - 16, width: 32, height: 32});
-  participant.primaryPerk = await resolveValue(participant.primaryPerk, "perk", `participants[${index}].primaryPerk`, {left: 18, top: row - 10, width: 20, height: 20});
-  participant.summonerSpells = await resolveSlots(participant.summonerSpells, "spell", `participants[${index}].summonerSpells`, [{left: 43, top: row - 12, width: 11, height: 11}, {left: 43, top: row + 3, width: 11, height: 11}], false);
-  participant.items = await resolveSlots(participant.items, "item", `participants[${index}].items`, [284, 309, 334, 359, 384, 409].map((left) => ({left, top: row - 10, width: 22, height: 22})), true);
-  participant.trinket = await resolveNullable(participant.trinket, "trinket", `participants[${index}].trinket`, {left: 434, top: row - 10, width: 22, height: 22});
-  participant.questSlot = await resolveNullable(participant.questSlot, "quest", `participants[${index}].questSlot`, {left: 467, top: row - 10, width: 22, height: 22});
-}
-for (const team of ["BLUE", "RED"]) applyTeamSpellQuestConstraints(team);
-payload.participants.sort((left, right) => ["BLUE", "RED"].indexOf(left.team) - ["BLUE", "RED"].indexOf(right.team)
-  || MATCH_ROLE_ORDER.indexOf(left.role) - MATCH_ROLE_ORDER.indexOf(right.role));
-
-if (unresolved.length) {
-  if (diagnosticsOutput) await writeFile(diagnosticsOutput, `${JSON.stringify(payload, null, 2)}\n`, {mode: 0o600});
-  fail(`Unresolved or ambiguous assets:\n${unresolved.map((entry) => `- ${entry}`).join("\n")}`);
-}
-await writeFile(outputPath, `${JSON.stringify(payload, null, 2)}\n`, {mode: 0o600});
-if (confidenceOutput) await writeFile(confidenceOutput, `${JSON.stringify({assets: resolutions}, null, 2)}\n`, {mode: 0o600});
-process.stdout.write(`Resolved Data Dragon ${version} assets into ${outputPath}\n`);
 
 async function resolveSlots(values, kind, field, coordinates, nullable) {
   if (!Array.isArray(values) || values.length !== coordinates.length) fail(`${field} must contain exactly ${coordinates.length} slots.`);
@@ -310,8 +344,8 @@ function correlation(left, right, pixels, channel) {
   const denominator = Math.sqrt(leftVariance * rightVariance);
   return denominator ? covariance / denominator : 0;
 }
-function option(name) { const index = argv.indexOf(name); return index >= 0 ? argv[index + 1] : undefined; }
-function numberOption(name, fallback) { const value = option(name); if (value === undefined) return fallback; const parsed = Number(value); if (!Number.isFinite(parsed) || Math.abs(parsed) > 100) fail(`${name} must be a number between -100 and 100.`); return Math.round(parsed); }
+function option(argv, name) { const index = argv.indexOf(name); return index >= 0 ? argv[index + 1] : undefined; }
+function numberOption(argv, name, fallback) { const value = option(argv, name); if (value === undefined) return fallback; const parsed = Number(value); if (!Number.isFinite(parsed) || Math.abs(parsed) > 100) fail(`${name} must be a number between -100 and 100.`); return Math.round(parsed); }
 async function cachedJson(url, path) { try { return JSON.parse(await readFile(path, "utf8")); } catch { const response = await fetch(url, {signal: AbortSignal.timeout(10_000)}); if (!response.ok) fail(`Data Dragon request failed (${response.status}): ${url}`); const json = await response.json(); await writeFile(path, JSON.stringify(json)); return json; } }
 async function cachedBinary(url, path) {
   let pending = binaryCache.get(path);
@@ -330,4 +364,11 @@ async function cachedBinary(url, path) {
   }
   return pending;
 }
-function fail(message) { process.stderr.write(`${message}\n`); process.exit(1); }
+function fail(message) { throw new Error(message); }
+
+if (process.argv[1] && import.meta.url === pathToFileURL(process.argv[1]).href) {
+  runCli().catch((error) => {
+    process.stderr.write(`${error instanceof Error ? error.message : String(error)}\n`);
+    process.exitCode = 1;
+  });
+}

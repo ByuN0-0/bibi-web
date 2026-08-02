@@ -11,7 +11,7 @@
 - **섹션 구성**: 히어로 섹션, 소개, 명령어 목록, FAQ 등 비비봇의 핵심 기능 소개
 - **LoL 내전 관리**: `/lol-statics`에서 선수, 전적 갱신, 팀 편성, 확정 기록 관리
 - **공개 LoL 팀 편성**: `/lol-member`에서 로그인 없이 등록 선수 10명의 팀 편성 및 재편성
-- **공개 LoL 내전 기록**: `/lol-history`에서 경기 목록과 아이콘 점수판 조회
+- **공개 LoL 내전 기록**: `/lol-member?tab=history`에서 경기 목록과 인라인 아이콘 점수판 조회
 
 ## LoL 관리 화면
 
@@ -119,7 +119,7 @@ Oracle SODA에 저장하지 않습니다.
 ```
 
 실제 요청에는 `participants`를 BLUE 5명, RED 5명으로 정확히 10명 포함해야
-합니다. 공개 결과는 `/lol-history`, 관리자 연결·수정 화면은 `/lol-statics/history`에서 확인합니다.
+합니다. 공개 결과는 `/lol-member?tab=history`, 관리자 연결·수정 화면은 `/lol-statics/history`에서 확인합니다.
 
 Vercel 프로젝트에 다음 환경변수를 등록합니다. 실제 비밀번호와 비밀키는
 저장소에 커밋하지 않습니다.

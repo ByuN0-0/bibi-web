@@ -1,11 +1,9 @@
 #!/usr/bin/env node
 import {createHash} from "node:crypto";
-import {execFile} from "node:child_process";
-import {mkdir, mkdtemp, readFile, rm, stat, writeFile} from "node:fs/promises";
+import {mkdir, readFile, stat, writeFile} from "node:fs/promises";
 import {tmpdir} from "node:os";
-import {dirname, join, resolve} from "node:path";
-import {fileURLToPath} from "node:url";
-import {promisify} from "node:util";
+import {join} from "node:path";
+import {pathToFileURL} from "node:url";
 import sharp from "sharp";
 import {createWorker, PSM} from "tesseract.js";
 import kor from "@tesseract.js-data/kor";
@@ -20,36 +18,67 @@ import {
   REFERENCE_ROWS,
   validateMechanicalTotals,
 } from "./scoreboard-machine-core.mjs";
+import {resolveDataDragonAssets} from "./resolve-ddragon-assets.mjs";
 
-const execFileAsync = promisify(execFile);
-const scriptDir = dirname(fileURLToPath(import.meta.url));
-const argv = process.argv.slice(2);
-const screenshotPath = argv[0];
-const outputPath = option("--output") ?? "resolved-match.json";
-const recognizedOutput = option("--recognized-output");
-const alignedOutput = option("--aligned-output");
-const reportOutput = option("--report-output");
-const playersPath = option("--players");
-const noResolve = argv.includes("--no-resolve");
-const strictAssets = argv.includes("--strict-assets");
-if (!screenshotPath || screenshotPath.startsWith("--")) usage();
+let aligned;
+let worker;
+let englishWorker;
+let ocrLog;
+let ocrQueue;
+let players;
+let sharedWorkersPromise;
 
-const startedAt = performance.now();
-const original = await readFile(screenshotPath);
-const normalized = await sharp(original).resize({width: CANVAS.width}).png().toBuffer();
-const {data: normalizedRaw, info: normalizedInfo} = await sharp(normalized).removeAlpha().raw().toBuffer({resolveWithObject: true});
-const layout = detectScoreboardLayout(normalizedRaw, normalizedInfo);
-if (layout.confidence < 0.42) fail(`점수판 아이템 슬롯 앵커를 찾지 못했습니다. confidence=${layout.confidence.toFixed(2)}`);
-const aligned = await alignToCanvas(normalized, normalizedInfo, layout.transform);
-if (alignedOutput) await writeFile(alignedOutput, aligned, {mode: 0o600});
+export async function readScoreboardImage(original, options = {}) {
+  const startedAt = performance.now();
+  players = options.players ?? [];
+  const cacheRoot = options.cacheRoot ?? tmpdir();
+  const normalized = await sharp(original).resize({width: CANVAS.width}).png().toBuffer();
+  const {data: normalizedRaw, info: normalizedInfo} = await sharp(normalized).removeAlpha().raw().toBuffer({resolveWithObject: true});
+  const layout = detectScoreboardLayout(normalizedRaw, normalizedInfo);
+  if (layout.confidence < 0.42) fail(`점수판 아이템 슬롯 앵커를 찾지 못했습니다. confidence=${layout.confidence.toFixed(2)}`);
+  aligned = await alignToCanvas(normalized, normalizedInfo, layout.transform);
+  const ocrCachePath = join(cacheRoot, "bibi-tesseract-cache");
+  await mkdir(ocrCachePath, {recursive: true});
+  const workers = await getWorkers(ocrCachePath, options.reuseWorkers ?? false);
+  worker = workers.worker;
+  englishWorker = workers.englishWorker;
+  ocrLog = [];
+  ocrQueue = Promise.resolve();
+  let recognizedPayload;
+  try {
+    recognizedPayload = await recognizeScoreboard(original);
+  } finally {
+    if (!(options.reuseWorkers ?? false)) await Promise.all([worker.terminate(), englishWorker.terminate()]);
+  }
+  const report = {layout, ocr: ocrLog, assets: [], elapsedMs: Math.round(performance.now() - startedAt)};
+  let resolvedPayload = recognizedPayload;
+  if (options.resolveAssets !== false) {
+    const resolved = await resolveDataDragonAssets(recognizedPayload, {
+      screenshot: aligned,
+      cacheDir: join(cacheRoot, "bibi-ddragon-cache"),
+      allowAmbiguous: options.allowAmbiguous ?? true,
+    });
+    resolvedPayload = resolved.payload;
+    report.assets = resolved.assets;
+  }
+  report.elapsedMs = Math.round(performance.now() - startedAt);
+  return {payload: resolvedPayload, recognizedPayload, report, aligned};
+}
 
-const players = await loadPlayers(playersPath);
-const ocrCachePath = join(tmpdir(), "bibi-tesseract-cache");
-await mkdir(ocrCachePath, {recursive: true});
-const worker = await createWorker("kor", 1, {langPath: kor.langPath, gzip: kor.gzip, cachePath: ocrCachePath});
-const englishWorker = await createWorker("eng", 1, {langPath: eng.langPath, gzip: eng.gzip, cachePath: ocrCachePath});
-const ocrLog = [];
-let ocrQueue = Promise.resolve();
+async function getWorkers(cachePath, reuse) {
+  if (!reuse) {
+    return {
+      worker: await createWorker("kor", 1, {langPath: kor.langPath, gzip: kor.gzip, cachePath}),
+      englishWorker: await createWorker("eng", 1, {langPath: eng.langPath, gzip: eng.gzip, cachePath}),
+    };
+  }
+  sharedWorkersPromise ??= Promise.all([
+    createWorker("kor", 1, {langPath: kor.langPath, gzip: kor.gzip, cachePath}),
+    createWorker("eng", 1, {langPath: eng.langPath, gzip: eng.gzip, cachePath}),
+  ]).then(([sharedWorker, sharedEnglishWorker]) => ({worker: sharedWorker, englishWorker: sharedEnglishWorker}));
+  return sharedWorkersPromise;
+}
+
 function textField(field, rectangle, type = "text") {
   const pending = ocrQueue.then(() => recognizeField(field, rectangle, type));
   ocrQueue = pending.catch(() => undefined);
@@ -83,8 +112,7 @@ async function englishNameField(field, rectangle) {
   return entry;
 }
 
-let payload;
-try {
+async function recognizeScoreboard(original) {
   const [resultText, durationText, dateText] = await Promise.all([
     textField("result", {left: 66, top: 12, width: 86, height: 32}),
     textField("duration", {left: 242, top: 43, width: 54, height: 22}, "time"),
@@ -161,49 +189,35 @@ try {
   ensureNumbers(teamStats, participants);
   const totalErrors = validateMechanicalTotals(teamStats, participants);
   if (totalErrors.length) fail(`OCR 합계 검증에 실패했습니다:\n${totalErrors.map((error) => `- ${error}`).join("\n")}`);
-  payload = {
+  return {
     action: "validate",
     ingestionId: `lol-scoreboard:${createHash("sha256").update(original).digest("hex")}`,
     playedOn, winner, durationSeconds,
     teamStats, participants,
   };
-} finally {
-  await Promise.all([worker.terminate(), englishWorker.terminate()]);
 }
 
-const tempRoot = await mkdtemp(join(tmpdir(), "bibi-scoreboard-"));
-try {
-  const recognizedPath = join(tempRoot, "recognized.json");
-  const alignedPath = join(tempRoot, "aligned.png");
-  const assetConfidencePath = join(tempRoot, "asset-confidence.json");
-  await writeFile(recognizedPath, `${JSON.stringify(payload, null, 2)}\n`, {mode: 0o600});
-  await writeFile(alignedPath, aligned, {mode: 0o600});
-  if (recognizedOutput) await writeFile(recognizedOutput, `${JSON.stringify(payload, null, 2)}\n`, {mode: 0o600});
-  const report = {layout, ocr: ocrLog, assets: [], elapsedMs: Math.round(performance.now() - startedAt)};
-  if (noResolve) {
-    await writeFile(outputPath, `${JSON.stringify(payload, null, 2)}\n`, {mode: 0o600});
-  } else {
-    const resolver = join(scriptDir, "resolve-ddragon-assets.mjs");
-    try {
-      const resolverArguments = [resolver, recognizedPath, "--screenshot", alignedPath, "--output", resolve(outputPath), "--confidence-output", assetConfidencePath];
-      if (!strictAssets) resolverArguments.push("--allow-ambiguous");
-      const {stdout, stderr} = await execFileAsync(process.execPath, resolverArguments, {maxBuffer: 2 * 1024 * 1024});
-      if (stdout) process.stdout.write(stdout);
-      if (stderr) process.stderr.write(stderr);
-      report.assets = JSON.parse(await readFile(assetConfidencePath, "utf8")).assets ?? [];
-    } catch (error) {
-      if (error.stdout) process.stdout.write(error.stdout);
-      if (error.stderr) process.stderr.write(error.stderr);
-      fail("아이콘 판독에 실패했습니다. --recognized-output과 --aligned-output으로 진단 파일을 저장할 수 있습니다.");
-    }
-  }
-  report.elapsedMs = Math.round(performance.now() - startedAt);
-  if (reportOutput) await writeFile(reportOutput, `${JSON.stringify(report, null, 2)}\n`, {mode: 0o600});
-  const reviewCount = report.assets.filter((asset) => !asset.accepted).length;
+async function runCli() {
+  const argv = process.argv.slice(2);
+  const screenshotPath = argv[0];
+  if (!screenshotPath || screenshotPath.startsWith("--")) usage();
+  const original = await readFile(screenshotPath);
+  const result = await readScoreboardImage(original, {
+    players: await loadPlayers(option(argv, "--players")),
+    resolveAssets: !argv.includes("--no-resolve"),
+    allowAmbiguous: !argv.includes("--strict-assets"),
+  });
+  const outputPath = option(argv, "--output") ?? "resolved-match.json";
+  await writeFile(outputPath, `${JSON.stringify(result.payload, null, 2)}\n`, {mode: 0o600});
+  const recognizedOutput = option(argv, "--recognized-output");
+  const alignedOutput = option(argv, "--aligned-output");
+  const reportOutput = option(argv, "--report-output");
+  if (recognizedOutput) await writeFile(recognizedOutput, `${JSON.stringify(result.recognizedPayload, null, 2)}\n`, {mode: 0o600});
+  if (alignedOutput) await writeFile(alignedOutput, result.aligned, {mode: 0o600});
+  if (reportOutput) await writeFile(reportOutput, `${JSON.stringify(result.report, null, 2)}\n`, {mode: 0o600});
+  const reviewCount = result.report.assets.filter((asset) => !asset.accepted).length;
   if (reviewCount) process.stdout.write(`Review required for ${reviewCount} low-confidence assets before validation or commit.\n`);
-  process.stdout.write(`Mechanical scoreboard read completed in ${Math.round(performance.now() - startedAt)}ms (alignment confidence ${(layout.confidence * 100).toFixed(0)}%).\n`);
-} finally {
-  await rm(tempRoot, {recursive: true, force: true});
+  process.stdout.write(`Mechanical scoreboard read completed in ${result.report.elapsedMs}ms (alignment confidence ${(result.report.layout.confidence * 100).toFixed(0)}%).\n`);
 }
 
 async function numberField(field, centerX, centerY, width, {blankIsZero = false, narrowRetry = false} = {}) {
@@ -304,9 +318,17 @@ function clampRectangle(rectangle) {
   return {left, top, width: Math.min(Math.round(rectangle.width), CANVAS.width - left), height: Math.min(Math.round(rectangle.height), CANVAS.height - top)};
 }
 
-function option(name) { const index = argv.indexOf(name); return index >= 0 ? argv[index + 1] : undefined; }
+function option(argv, name) { const index = argv.indexOf(name); return index >= 0 ? argv[index + 1] : undefined; }
 function usage() {
   process.stderr.write("Usage: read-scoreboard.mjs <screenshot> [--output resolved.json] [--players players.json] [--recognized-output draft.json] [--aligned-output aligned.png] [--report-output report.json] [--strict-assets] [--no-resolve]\n");
-  process.exit(2);
+  process.exitCode = 2;
+  throw new Error("점수판 이미지 경로가 필요합니다.");
 }
 function fail(message) { throw new Error(message); }
+
+if (process.argv[1] && import.meta.url === pathToFileURL(process.argv[1]).href) {
+  runCli().catch((error) => {
+    process.stderr.write(`${error instanceof Error ? error.message : String(error)}\n`);
+    process.exitCode = 1;
+  });
+}

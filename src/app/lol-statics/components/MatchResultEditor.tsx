@@ -2,19 +2,43 @@
 
 import {useEffect, useMemo, useState, type FormEvent} from "react";
 import LolIcon from "@/app/components/LolIcon";
-import type {DataDragonAssetKind, LolAssetRef, MatchObjectives, MatchResult, MatchResultParticipant, MatchTeam, PlayerProfile} from "@/lib/lol/types";
+import LolMatchScoreboard from "@/app/components/LolMatchScoreboard";
+import {swapMatchTeams} from "@/lib/lol/match-result-draft";
+import type {DataDragonAssetKind, LolAssetRef, MatchObjectives, MatchRecognitionReview, MatchResult, MatchResultDraft, MatchResultParticipant, MatchTeam, PlayerProfile} from "@/lib/lol/types";
 import {ROLE_LABEL} from "@/lib/lol/types";
 
 const OBJECTIVES: Array<[keyof MatchObjectives, string]> = [["turretsDestroyed", "포탑"], ["inhibitorsDestroyed", "억제기"], ["baronKills", "내셔 남작"], ["dragonKills", "드래곤"], ["riftHeraldKills", "전령"], ["voidGrubKills", "공허 유충"]];
 const catalogCache = new Map<string, LolAssetRef[]>();
 type PickerState = {kind: DataDragonAssetKind; label: string; current: LolAssetRef | null; nullable: boolean; apply: (asset: LolAssetRef | null) => void};
 
-export default function MatchResultEditor({result, players}: {result: MatchResult; players: PlayerProfile[]}) {
-  const [draft, setDraft] = useState<MatchResult>(() => structuredClone(result));
+export default function MatchResultEditor({result, players, mode = "edit", reviewReceipt = "", reviews = [], confirmedReviewIds = [], onConfirmReview, onSwapReviews, onCancel, onSaved}: {
+  result: MatchResult | MatchResultDraft;
+  players: PlayerProfile[];
+  mode?: "edit" | "create";
+  reviewReceipt?: string;
+  reviews?: MatchRecognitionReview[];
+  confirmedReviewIds?: string[];
+  onConfirmReview?: (reviewId: string) => void;
+  onSwapReviews?: () => void;
+  onCancel?: () => void;
+  onSaved?: (result: MatchResult) => void;
+}) {
+  const [draft, setDraft] = useState<MatchResult | MatchResultDraft>(() => structuredClone(result));
   const [pending, setPending] = useState(false);
   const [error, setError] = useState("");
   const [picker, setPicker] = useState<PickerState | null>(null);
   const dirty = JSON.stringify(draft) !== JSON.stringify(result);
+  const allReviewsConfirmed = reviews.every((review) => confirmedReviewIds.includes(review.id));
+  const remainingReviewCount = reviews.filter((review) => !confirmedReviewIds.includes(review.id)).length;
+  const previewDraft = useMemo(() => ({...draft, teamStats: draft.teamStats.map((stats) => ({...stats, ...teamTotals(draft.participants, stats.team)}))}), [draft]);
+
+  useEffect(() => {
+    const warn = (event: BeforeUnloadEvent) => {
+      if (dirty || mode === "create") event.preventDefault();
+    };
+    window.addEventListener("beforeunload", warn);
+    return () => window.removeEventListener("beforeunload", warn);
+  }, [dirty, mode]);
 
   function updateParticipant(index: number, patch: Partial<MatchResultParticipant>) {
     setDraft((current) => ({...current, participants: current.participants.map((participant, participantIndex) => participantIndex === index ? {...participant, ...patch} : participant)}));
@@ -29,16 +53,21 @@ export default function MatchResultEditor({result, players}: {result: MatchResul
     setPending(true);
     setError("");
     try {
-      await validateDraftAssets(draft);
       const teamStats = draft.teamStats.map((stats) => ({...stats, ...teamTotals(draft.participants, stats.team)}));
-      const response = await fetch(`/api/lol-statics/match-results/${encodeURIComponent(result.matchResultId)}`, {
-        method: "PATCH",
+      const normalizedDraft = {...draft, teamStats};
+      await validateDraftAssets(normalizedDraft);
+      const editingExisting = mode === "edit" && "matchResultId" in result;
+      const response = await fetch(editingExisting ? `/api/lol-statics/match-results/${encodeURIComponent(result.matchResultId)}` : "/api/lol-statics/match-results", {
+        method: editingExisting ? "PATCH" : "POST",
         headers: {"Content-Type": "application/json"},
-        body: JSON.stringify({revision: result.revision, winner: draft.winner, playedOn: draft.playedOn, durationSeconds: draft.durationSeconds, ddragonVersion: draft.ddragonVersion, teamStats, participants: draft.participants}),
+        body: JSON.stringify(editingExisting
+          ? {revision: result.revision, winner: draft.winner, playedOn: draft.playedOn, durationSeconds: draft.durationSeconds, ddragonVersion: draft.ddragonVersion, teamStats, participants: draft.participants}
+          : {draft: normalizedDraft, reviewReceipt, confirmedReviewIds}),
       });
       const payload = await response.json();
       if (!response.ok) throw new Error(response.status === 409 ? "다른 관리자가 먼저 수정했습니다. 입력한 내용은 유지되며, 원본을 다시 확인한 뒤 새로고침해 주세요." : payload.error ?? "경기 결과를 수정하지 못했습니다.");
-      window.location.href = `/lol-history/${encodeURIComponent(result.matchResultId)}`;
+      if (onSaved) onSaved(payload.result as MatchResult);
+      else window.location.href = `/lol-statics/history?open=${encodeURIComponent((payload.result as MatchResult).matchResultId)}`;
     } catch (submitError) {
       setError(submitError instanceof Error ? submitError.message : "경기 결과를 수정하지 못했습니다.");
       setPending(false);
@@ -48,6 +77,13 @@ export default function MatchResultEditor({result, players}: {result: MatchResul
 
   return (
     <form onSubmit={submit} className="space-y-6 pb-24">
+      <section className="surface-card overflow-hidden p-3 sm:p-5">
+        <div className="mb-4 flex flex-wrap items-center justify-between gap-3">
+          <div><p className="eyebrow">Live Scoreboard</p><h2 className="mt-1 text-lg font-bold">점수표 미리보기</h2></div>
+          <button type="button" onClick={() => {setDraft((current) => swapMatchTeams(current)); onSwapReviews?.();}} className="secondary-button">블루 ↔ 레드 팀 교체</button>
+        </div>
+        <LolMatchScoreboard result={previewDraft} compact reviews={reviews} confirmedReviewIds={confirmedReviewIds} onConfirmReview={onConfirmReview} />
+      </section>
       <section className="surface-card grid gap-4 p-5 sm:grid-cols-2 xl:grid-cols-4 sm:p-6">
         <SelectField label="승리 팀" value={draft.winner} onChange={(value) => setDraft({...draft, winner: value as MatchTeam})}><option value="BLUE">블루</option><option value="RED">레드</option></SelectField>
         <InputField label="경기 날짜" type="date" value={draft.playedOn} onChange={(value) => setDraft({...draft, playedOn: value})} />
@@ -69,7 +105,7 @@ export default function MatchResultEditor({result, players}: {result: MatchResul
       </div>
 
       {error && <p id="match-editor-error" role="alert" className="rounded-xl border border-[#f2b8aa] bg-[var(--error-soft)] px-4 py-3 text-sm text-[var(--error)]">{error}</p>}
-      <div className="fixed inset-x-0 bottom-0 z-40 border-t border-[var(--hairline)] bg-white/95 px-4 py-3 shadow-[0_-8px_24px_rgba(0,0,0,0.08)] backdrop-blur lg:left-64"><div className="mx-auto flex max-w-[1380px] items-center justify-between gap-4"><p className="text-xs text-[var(--muted)]">{dirty ? "수정된 내용이 있습니다." : "변경사항이 없습니다."}</p><div className="flex gap-2"><a href="/lol-statics/history" className="secondary-button">취소</a><button type="submit" disabled={pending || !dirty} className="primary-button">{pending ? "검증·저장 중…" : "수정 저장"}</button></div></div></div>
+      <div className="fixed inset-x-0 bottom-0 z-40 border-t border-[var(--hairline)] bg-white/95 px-4 py-3 shadow-[0_-8px_24px_rgba(0,0,0,0.08)] backdrop-blur lg:left-64"><div className="mx-auto flex max-w-[1380px] items-center justify-between gap-4"><p className="text-xs text-[var(--muted)]">{mode === "create" && !allReviewsConfirmed ? `확인이 필요한 항목이 ${remainingReviewCount}개 남았습니다.` : dirty ? "수정된 내용이 있습니다." : mode === "create" ? "판독 초안을 저장할 수 있습니다." : "변경사항이 없습니다."}</p><div className="flex gap-2">{onCancel ? <button type="button" onClick={onCancel} className="secondary-button">취소</button> : <a href="/lol-statics/history" className="secondary-button">취소</a>}<button type="submit" disabled={pending || (mode === "edit" ? !dirty : !allReviewsConfirmed)} className="primary-button">{pending ? "검증·저장 중…" : mode === "create" ? "새 경기 저장" : "수정 저장"}</button></div></div></div>
       {picker && <AssetPicker version={draft.ddragonVersion} state={picker} onClose={() => setPicker(null)} />}
     </form>
   );
@@ -122,7 +158,7 @@ async function loadAssetCatalog(version: string, kind: DataDragonAssetKind) {
   return assets;
 }
 
-async function validateDraftAssets(draft: MatchResult) {
+async function validateDraftAssets(draft: MatchResult | MatchResultDraft) {
   const groups: Record<DataDragonAssetKind, LolAssetRef[]> = {
     champions: [...draft.teamStats.flatMap((stats) => stats.bans.filter((asset): asset is LolAssetRef => !!asset)), ...draft.participants.map((participant) => participant.champion)],
     items: draft.participants.flatMap((participant) => [...participant.items, participant.trinket, participant.questSlot].filter((asset): asset is LolAssetRef => !!asset)),

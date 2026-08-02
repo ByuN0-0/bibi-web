@@ -1,6 +1,5 @@
 "use client";
 
-import Link from "next/link";
 import LolIcon from "@/app/components/LolIcon";
 import LolMatchScoreboard from "@/app/components/LolMatchScoreboard";
 import type {MatchTeam, PublicMatchResult} from "@/lib/lol/types";
@@ -31,7 +30,6 @@ export default function PublicMatchHistory({results, loading, error, hasMore, on
             </summary>
             <div className="border-t border-[var(--hairline-soft)] bg-white px-3 py-3 sm:px-4">
               <LolMatchScoreboard result={result} compact />
-              <div className="mt-3 text-right"><Link href={`/lol-history/${encodeURIComponent(result.matchResultId)}`} className="text-xs font-semibold text-[var(--primary)]">별도 상세 페이지 열기 →</Link></div>
             </div>
           </details>
         ))}

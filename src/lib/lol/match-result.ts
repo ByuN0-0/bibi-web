@@ -94,7 +94,11 @@ export function prepareMatchResult(
   };
 }
 
-export function createMatchResult(prepared: PreparedMatchResult, now = Date.now()): MatchResult {
+export function createMatchResult(
+  prepared: PreparedMatchResult,
+  now = Date.now(),
+  correctedBy: MatchResult["correctedBy"] = "ingest-api",
+): MatchResult {
   return {
     schemaVersion: 4,
     matchResultId: crypto.randomUUID(),
@@ -108,7 +112,7 @@ export function createMatchResult(prepared: PreparedMatchResult, now = Date.now(
     teamStats: prepared.input.teamStats,
     participants: prepared.participants,
     revision: 1,
-    correctedBy: "ingest-api",
+    correctedBy,
     corrections: [],
     createdAt: now,
     updatedAt: now,

@@ -45,7 +45,7 @@ Store one standard Korean LoL post-game scoreboard screenshot as structured matc
     node .agents/skills/bibi-ingest-lol-match/scripts/submit-match-result.mjs commit resolved.json
     ```
 
-13. Return the saved result ID and `${BIBI_WEB_BASE_URL}/lol-history/{matchResultId}`. When the `ingestionId` already exists, commit may return `UPDATED` after correcting only its player mappings.
+13. Return the saved result ID and `${BIBI_WEB_BASE_URL}/lol-member?tab=history`. When the `ingestionId` already exists, commit may return `UPDATED` after correcting only its player mappings.
 
 ## Safety rules
 
