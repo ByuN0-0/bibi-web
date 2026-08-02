@@ -10,25 +10,27 @@ Store one standard Korean LoL post-game scoreboard screenshot as structured matc
 ## Required workflow
 
 1. Read `references/payload-schema.md` before extracting values.
-2. Fetch the registered-player catalog before reading names:
+2. Run the mechanical reader first. It detects item-slot borders as anchors, aligns different screenshot dimensions to the canonical canvas, runs local Korean/English OCR, verifies team totals, maps registered main/alt Riot IDs, and resolves Data Dragon assets:
 
    ```bash
-   node .agents/skills/bibi-ingest-lol-match/scripts/submit-match-result.mjs players
+   node --env-file=.env .agents/skills/bibi-ingest-lol-match/scripts/read-scoreboard.mjs scoreboard.png \
+     --output resolved.json --recognized-output recognized.json \
+     --aligned-output aligned.png --report-output report.json
    ```
 
-   Compare visible nicknames against `displayName`, `riotGameName`, and `riotGameName#riotTagLine`. Set the participant's `discordUserId` only for a unique, visually supported match. Leave it null when ambiguous; never pick by similarity alone.
-3. Inspect only the visible scoreboard. Never infer a hidden or unreadable number.
+   The player catalog is cached for at most ten minutes. Pass `--players players.json` for an offline catalog. Use `--strict-assets` to stop instead of writing deterministic suggestions for low-confidence icons.
+3. Check `report.json`. Layout confidence, OCR readings, player mappings, and all asset matches are recorded. Every asset with `accepted: false` requires visual review and correction in `resolved.json` before API validation. Never validate or commit a review draft merely because the command exited successfully.
 4. Map `1번 팀` to `BLUE` and `2번 팀` to `RED`.
 5. Determine the winner from the selected player's team plus the visible `승리` or `패배` label. Stop and ask if those signals conflict.
-6. Extract the date, duration, team totals, six objective counters, five ban slots, and all ten participant rows at the fixed positions documented in the reference.
-7. Recognize asset names visually first. Save names and confirmed player IDs in a recognition JSON file, then run:
+6. Confirm that date, duration, team totals, six objective counters, five ban slots, and all ten participant rows are present. Confirm that each team has exactly one top, jungle, middle, bottom, and support position quest. The reader maps those quests to roles, sorts both teams TOP→JUNGLE→MIDDLE→BOTTOM→UTILITY, and rejects numerical results whose team K/D/A or gold does not equal the five player rows.
+7. If the mechanical reader is unavailable or a screenshot does not reach the minimum anchor confidence, use the manual recognition fallback. Save names and confirmed player IDs in a recognition JSON file, then run:
 
    ```bash
    node .agents/skills/bibi-ingest-lol-match/scripts/resolve-ddragon-assets.mjs recognized.json --screenshot scoreboard.png --output resolved.json
    ```
 
    The resolver converts exact Korean names to canonical `{id,name,iconPath}` references. It performs image comparison only for unresolved or ambiguous slots.
-8. Review unresolved slots. Do not substitute a top candidate when the resolver reports a tie or insufficient confidence; ask the user instead.
+8. Review unresolved or low-confidence slots. Do not treat a suggested top candidate as confirmed when the report marks it for review.
 9. Run validation only:
 
    ```bash
@@ -53,7 +55,7 @@ Store one standard Korean LoL post-game scoreboard screenshot as structured matc
 - Never change `ingestionId` between validation and commit.
 - Never store the screenshot in bibi-web or Oracle SODA.
 - Treat the API response as authoritative for registered-player and guest mapping. Match records are independent of confirmed team sessions.
-- Query the player catalog on every new screenshot instead of relying on a previous run's names.
+- Refresh the player catalog after its ten-minute cache expires; never persist it in the repository.
 - If an asset name is readable, prefer catalog lookup over image comparison.
 
 ## Output review format

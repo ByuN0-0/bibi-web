@@ -176,6 +176,7 @@ export type MatchObjectives = {
 
 export type MatchResultParticipant = {
   team: MatchTeam;
+  role: Role;
   observedName: string;
   discordUserId: string | null;
   guest: boolean;

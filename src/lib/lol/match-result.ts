@@ -7,9 +7,10 @@ import type {
   MatchResultTeamStats,
   MatchTeam,
   PlayerProfile,
+  Role,
   RiotAccountProfile,
 } from "@/lib/lol/types";
-import {MATCH_TEAMS} from "@/lib/lol/types";
+import {MATCH_TEAMS, ROLES} from "@/lib/lol/types";
 
 const ASSET_PATH = /^(?:img\/(?:champion|item|spell)\/[A-Za-z0-9_.-]+\.png|perk-images\/[A-Za-z0-9_./-]+\.png)$/;
 const OBJECTIVE_FIELDS = [
@@ -73,7 +74,7 @@ export function parseMatchResultInput(input: unknown): ParsedMatchResultInput {
     durationSeconds: positiveInteger(body.durationSeconds, "durationSeconds"),
     ddragonVersion: ddragonVersion(body.ddragonVersion),
     teamStats: parseTeamStats(body.teamStats),
-    participants: parseParticipants(body.participants),
+    participants: sortParticipantsByRole(parseParticipants(body.participants)),
   };
   validateMatchTotals(result.teamStats, result.participants);
   return result;
@@ -95,7 +96,7 @@ export function prepareMatchResult(
 
 export function createMatchResult(prepared: PreparedMatchResult, now = Date.now()): MatchResult {
   return {
-    schemaVersion: 3,
+    schemaVersion: 4,
     matchResultId: crypto.randomUUID(),
     ingestionId: prepared.input.ingestionId,
     sourceHash: prepared.sourceHash,
@@ -142,7 +143,7 @@ export function parseAdminMatchResultUpdate(input: unknown, players: PlayerProfi
     durationSeconds: positiveInteger(body.durationSeconds, "durationSeconds"),
     ddragonVersion: ddragonVersion(body.ddragonVersion),
     teamStats,
-    participants,
+    participants: sortParticipantsByRole(participants),
   };
 }
 
@@ -174,13 +175,22 @@ function parseParticipants(value: unknown): ParsedMatchParticipant[] {
   if (!Array.isArray(value) || value.length !== 10) {
     throw new MatchResultError("참가자는 정확히 10명이어야 합니다.");
   }
+  const teamOffsets: Record<MatchTeam, number> = {BLUE: 0, RED: 0};
   const participants = value.map((item, index): ParsedMatchParticipant => {
     const participant = record(item, `participants[${index}]가 올바르지 않습니다.`);
+    const team = matchTeam(participant.team);
+    const fallbackRole = ROLES[teamOffsets[team]++];
     const requestedDiscordUserId = typeof participant.discordUserId === "string" && participant.discordUserId.trim()
       ? text(participant.discordUserId, `participants[${index}].discordUserId`, 80)
       : null;
+    const questSlot = nullableAssetRef(participant.questSlot, `participants[${index}].questSlot`);
+    const questRole = questSlot ? roleFromQuest(questSlot) : null;
+    const requestedRole = participant.role === undefined ? null : matchRole(participant.role, `participants[${index}].role`);
+    if (questSlot && !questRole) throw new MatchResultError(`${participant.observedName ?? `participants[${index}]`}의 퀘스트가 포지션 퀘스트가 아닙니다.`);
+    if (questRole && requestedRole && questRole !== requestedRole) throw new MatchResultError(`participants[${index}]의 포지션과 퀘스트가 일치하지 않습니다.`);
     return {
-      team: matchTeam(participant.team),
+      team,
+      role: questRole ?? requestedRole ?? fallbackRole,
       observedName: text(participant.observedName, `participants[${index}].observedName`, 80),
       discordUserId: requestedDiscordUserId,
       champion: assetRef(participant.champion, `participants[${index}].champion`),
@@ -194,10 +204,11 @@ function parseParticipants(value: unknown): ParsedMatchParticipant[] {
       goldEarned: nonNegativeInteger(participant.goldEarned, `participants[${index}].goldEarned`),
       items: fixedAssetSlots(participant.items, 6, `participants[${index}].items`, true),
       trinket: nullableAssetRef(participant.trinket, `participants[${index}].trinket`),
-      questSlot: nullableAssetRef(participant.questSlot, `participants[${index}].questSlot`),
+      questSlot,
     };
   });
   validateTeamCounts(participants);
+  validateParticipantRolesAndSpells(participants);
   return participants;
 }
 
@@ -322,6 +333,42 @@ function validateTeamCounts(participants: Array<{team: MatchTeam}>) {
       throw new MatchResultError(`${team} 팀 참가자는 정확히 5명이어야 합니다.`);
     }
   }
+}
+
+function validateParticipantRolesAndSpells(participants: ParsedMatchParticipant[]) {
+  for (const team of MATCH_TEAMS) {
+    const members = participants.filter((participant) => participant.team === team);
+    if (new Set(members.map((participant) => participant.role)).size !== ROLES.length) {
+      throw new MatchResultError(`${team} 팀은 탑, 정글, 미드, 원딜, 서포터 포지션을 각각 한 명씩 포함해야 합니다.`);
+    }
+    for (const participant of members) {
+      const spellIds = participant.summonerSpells.map((spell) => spell.id);
+      if (new Set(spellIds).size !== spellIds.length) throw new MatchResultError(`${participant.observedName}의 소환사 주문이 중복되었습니다.`);
+      const hasSmite = participant.summonerSpells.some((spell) => spell.id.toLocaleLowerCase("en-US").includes("smite") || normalizePlayerName(spell.name) === normalizePlayerName("강타"));
+      if (hasSmite !== (participant.role === "JUNGLE")) throw new MatchResultError(`${participant.observedName}의 강타와 정글 포지션이 일치하지 않습니다.`);
+    }
+  }
+}
+
+function roleFromQuest(asset: LolAssetRef): Role | null {
+  const name = normalizePlayerName(asset.name);
+  if (name.includes(normalizePlayerName("상단 공격로"))) return "TOP";
+  if (name.includes(normalizePlayerName("정글 퀘스트"))) return "JUNGLE";
+  if (name.includes(normalizePlayerName("중단 공격로"))) return "MIDDLE";
+  if (name.includes(normalizePlayerName("하단 공격로"))) return "BOTTOM";
+  if (name.includes(normalizePlayerName("서포터 퀘스트"))) return "UTILITY";
+  return null;
+}
+
+function matchRole(value: unknown, field: string): Role {
+  const role = String(value ?? "").toUpperCase() as Role;
+  if (!ROLES.includes(role)) throw new MatchResultError(`${field}는 TOP, JUNGLE, MIDDLE, BOTTOM, UTILITY 중 하나여야 합니다.`);
+  return role;
+}
+
+function sortParticipantsByRole<T extends {team: MatchTeam; role: Role}>(participants: T[]): T[] {
+  return [...participants].sort((left, right) => MATCH_TEAMS.indexOf(left.team) - MATCH_TEAMS.indexOf(right.team)
+    || ROLES.indexOf(left.role) - ROLES.indexOf(right.role));
 }
 
 function matchTeam(value: unknown): MatchTeam {

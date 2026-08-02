@@ -52,6 +52,7 @@ describe("Data Dragon references", () => {
 function payload() {
   const participant = {
     team: "BLUE" as const,
+    role: "TOP" as const,
     observedName: "선수",
     champion: {...champion},
     primaryPerk: {...perk},

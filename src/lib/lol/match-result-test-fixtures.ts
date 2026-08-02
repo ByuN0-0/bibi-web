@@ -4,6 +4,8 @@ export const fixtureNow = Date.UTC(2026, 7, 2, 12);
 export const champion: LolAssetRef = {id: "Ahri", name: "아리", iconPath: "img/champion/Ahri.png"};
 export const perk: LolAssetRef = {id: "8112", name: "감전", iconPath: "perk-images/Styles/Domination/Electrocute/Electrocute.png"};
 export const spell: LolAssetRef = {id: "SummonerFlash", name: "점멸", iconPath: "img/spell/SummonerFlash.png"};
+export const heal: LolAssetRef = {id: "SummonerHeal", name: "회복", iconPath: "img/spell/SummonerHeal.png"};
+export const smite: LolAssetRef = {id: "SummonerSmite", name: "강타", iconPath: "img/spell/SummonerSmite.png"};
 export const item: LolAssetRef = {id: "3089", name: "라바돈의 죽음모자", iconPath: "img/item/3089.png"};
 
 export function zeroObjectives() {
@@ -13,11 +15,12 @@ export function zeroObjectives() {
 export function makeMatchInput(players = makePlayers(), action: "validate" | "commit" = "validate") {
   const participants = players.slice(0, 10).map((player, index) => ({
     team: index < 5 ? "BLUE" : "RED",
+    role: (["TOP", "JUNGLE", "MIDDLE", "BOTTOM", "UTILITY"] as const)[index % 5],
     observedName: player.riotGameName,
     discordUserId: null as string | null,
     champion: {...champion},
     primaryPerk: {...perk},
-    summonerSpells: [{...spell}, {...spell}],
+    summonerSpells: index % 5 === 1 ? [{...smite}, {...spell}] : [{...spell}, {...heal}],
     level: 15,
     kills: index < 5 ? index : index - 5,
     deaths: 1,
@@ -90,7 +93,7 @@ export function makeSession(players = makePlayers(), sessionId = "session-1"): T
 export function makeStoredResult(): MatchResult {
   const input = makeMatchInput();
   return {
-    schemaVersion: 3,
+    schemaVersion: 4,
     matchResultId: "result-1",
     ingestionId: input.ingestionId,
     sourceHash: "source-hash",

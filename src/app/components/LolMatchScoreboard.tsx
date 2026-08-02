@@ -1,5 +1,6 @@
 import LolIcon from "@/app/components/LolIcon";
 import type {MatchObjectives, MatchResult, MatchResultParticipant, MatchResultTeamStats, MatchTeam, PublicMatchResult, PublicMatchResultParticipant} from "@/lib/lol/types";
+import {ROLE_LABEL} from "@/lib/lol/types";
 
 const OBJECTIVES: Array<[keyof MatchObjectives, string]> = [
   ["turretsDestroyed", "포탑"],
@@ -75,7 +76,7 @@ function DesktopPlayerRow({participant, version, compact}: {participant: Scorebo
   const iconSize = compact ? 32 : 38;
   return (
     <tr className="border-t border-[var(--hairline-soft)] bg-white">
-      <td className={compact ? "px-3 py-2" : "px-4 py-3"}><div className="flex items-center gap-2.5"><LolIcon asset={participant.champion} version={version} size={iconSize} /><div><p className="font-semibold">Lv.{participant.level} {participant.observedName}</p><p className="mt-0.5 text-[10px] text-[var(--muted)]">{participant.champion.name}{participant.guest ? " · 게스트" : ""}</p></div></div></td>
+      <td className={compact ? "px-3 py-2" : "px-4 py-3"}><div className="flex items-center gap-2.5"><LolIcon asset={participant.champion} version={version} size={iconSize} /><div><p className="font-semibold">{participant.role ? `${ROLE_LABEL[participant.role]} · ` : ""}Lv.{participant.level} {participant.observedName}</p><p className="mt-0.5 text-[10px] text-[var(--muted)]">{participant.champion.name}{participant.guest ? " · 게스트" : ""}</p></div></div></td>
       <td className={compact ? "px-3 py-2" : "px-3 py-3"}><div className="flex gap-1"><LolIcon asset={participant.primaryPerk} version={version} size={compact ? 24 : 28} />{participant.summonerSpells.map((spell, index) => <LolIcon key={index} asset={spell} version={version} size={compact ? 24 : 28} />)}</div></td>
       <td className={`${compact ? "px-2 py-2" : "px-3 py-3"} text-center font-semibold`}>{participant.kills} / {participant.deaths} / {participant.assists}</td>
       <td className={`${compact ? "px-2 py-2" : "px-3 py-3"} text-right`}>{participant.cs}</td>
@@ -88,7 +89,7 @@ function DesktopPlayerRow({participant, version, compact}: {participant: Scorebo
 function MobilePlayerCard({participant, version, compact}: {participant: ScoreboardParticipant; version: string; compact: boolean}) {
   return (
     <article className={`bg-white ${compact ? "p-3" : "p-4"}`}>
-      <div className="flex items-start justify-between gap-3"><div className="flex items-center gap-3"><LolIcon asset={participant.champion} version={version} size={compact ? 36 : 42} /><div><p className="text-sm font-semibold">Lv.{participant.level} {participant.observedName}</p><p className="text-[10px] text-[var(--muted)]">{participant.champion.name}{participant.guest ? " · 게스트" : ""}</p></div></div><p className="text-sm font-bold">{participant.kills}/{participant.deaths}/{participant.assists}</p></div>
+      <div className="flex items-start justify-between gap-3"><div className="flex items-center gap-3"><LolIcon asset={participant.champion} version={version} size={compact ? 36 : 42} /><div><p className="text-sm font-semibold">{participant.role ? `${ROLE_LABEL[participant.role]} · ` : ""}Lv.{participant.level} {participant.observedName}</p><p className="text-[10px] text-[var(--muted)]">{participant.champion.name}{participant.guest ? " · 게스트" : ""}</p></div></div><p className="text-sm font-bold">{participant.kills}/{participant.deaths}/{participant.assists}</p></div>
       <div className={`${compact ? "mt-2" : "mt-3"} flex items-center justify-between gap-3`}><div className="flex gap-1"><LolIcon asset={participant.primaryPerk} version={version} size={compact ? 24 : 26} />{participant.summonerSpells.map((spell, index) => <LolIcon key={index} asset={spell} version={version} size={compact ? 24 : 26} />)}</div><p className="text-xs text-[var(--muted)]">CS {participant.cs} · {participant.goldEarned.toLocaleString()} G</p></div>
       <div className={compact ? "mt-2" : "mt-3"}><Inventory participant={participant} version={version} size={compact ? 24 : 28} /></div>
     </article>

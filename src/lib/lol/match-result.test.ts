@@ -8,7 +8,7 @@ describe("match result ingestion", () => {
     const parsed = parseMatchResultInput(makeMatchInput(players));
     const prepared = prepareMatchResult(parsed, players);
     const result = createMatchResult(prepared, fixtureNow);
-    expect(result).toMatchObject({schemaVersion: 3, playedOn: "2026-08-02", durationSeconds: 1800, ddragonVersion: "16.15.1"});
+    expect(result).toMatchObject({schemaVersion: 4, playedOn: "2026-08-02", durationSeconds: 1800, ddragonVersion: "16.15.1"});
     expect(result).not.toHaveProperty("sessionId");
     expect(result.participants[0]).toMatchObject({guest: false, trinket: null, questSlot: null});
     expect(result.participants[0].items).toHaveLength(6);
@@ -68,6 +68,29 @@ describe("match result ingestion", () => {
     const mismatch = makeMatchInput();
     mismatch.teamStats[0].goldTotal += 1;
     expect(() => parseMatchResultInput(mismatch)).toThrow("BLUE 팀 goldTotal 합계가 개인 합계와 일치하지 않습니다.");
+  });
+
+  it("maps position quests to roles, rejects duplicates, and stores canonical role order", () => {
+    const body = makeMatchInput();
+    const questNames = ["상단 공격로 퀘스트", "정글 퀘스트", "중단 공격로 퀘스트", "하단 공격로 퀘스트", "서포터 퀘스트"];
+    body.participants.forEach((participant, index) => {
+      participant.questSlot = {id: String(1200 + index % 5), name: questNames[index % 5], iconPath: `img/item/${1200 + index % 5}.png`};
+    });
+    body.participants = [body.participants[3], body.participants[1], body.participants[4], body.participants[0], body.participants[2], ...body.participants.slice(5)];
+    const parsed = parseMatchResultInput(body);
+    expect(parsed.participants.map((participant) => `${participant.team}:${participant.role}`)).toEqual([
+      "BLUE:TOP", "BLUE:JUNGLE", "BLUE:MIDDLE", "BLUE:BOTTOM", "BLUE:UTILITY",
+      "RED:TOP", "RED:JUNGLE", "RED:MIDDLE", "RED:BOTTOM", "RED:UTILITY",
+    ]);
+
+    const duplicate = makeMatchInput();
+    duplicate.participants[4].role = "BOTTOM";
+    expect(() => parseMatchResultInput(duplicate)).toThrow("각각 한 명씩 포함");
+
+    const duplicateQuest = makeMatchInput();
+    delete (duplicateQuest.participants[4] as Partial<typeof duplicateQuest.participants[number]>).role;
+    duplicateQuest.participants[4].questSlot = {id: "1202", name: "하단 공격로 퀘스트", iconPath: "img/item/1202.png"};
+    expect(() => parseMatchResultInput(duplicateQuest)).toThrow("각각 한 명씩 포함");
   });
 
   it("creates stable hashes and validates bearer tokens", () => {
