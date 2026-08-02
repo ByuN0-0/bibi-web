@@ -16,30 +16,26 @@ export const COLLECTIONS = {
   loginAttempts: "bibi_web_login_attempts",
 } as const;
 
-let collectionInitialization: Promise<void> | null = null;
-let loginCollectionInitialization: Promise<void> | null = null;
+const collectionInitializations = new Map<string, Promise<void>>();
 
-export async function ensureCollections() {
-  if (!collectionInitialization) {
-    collectionInitialization = Promise.all(
-      Object.values(COLLECTIONS).map((name) => soda.ensureCollection(name)),
-    ).then(() => undefined).catch((error) => {
-      collectionInitialization = null;
+async function ensureCollection(collection: string) {
+  let initialization = collectionInitializations.get(collection);
+  if (!initialization) {
+    initialization = soda.ensureCollection(collection).catch((error) => {
+      collectionInitializations.delete(collection);
       throw error;
     });
+    collectionInitializations.set(collection, initialization);
   }
-  await collectionInitialization;
+  await initialization;
+}
+
+export async function ensureCollections() {
+  await Promise.all(Object.values(COLLECTIONS).map(ensureCollection));
 }
 
 export async function ensureLoginCollection() {
-  if (!loginCollectionInitialization) {
-    loginCollectionInitialization = soda.ensureCollection(COLLECTIONS.loginAttempts)
-      .catch((error) => {
-        loginCollectionInitialization = null;
-        throw error;
-      });
-  }
-  await loginCollectionInitialization;
+  await ensureCollection(COLLECTIONS.loginAttempts);
 }
 
 async function findOne<T>(collection: string, filter: Record<string, unknown>) {
@@ -51,18 +47,21 @@ async function upsert<T>(
   filter: Record<string, unknown>,
   value: T,
 ) {
+  await ensureCollection(collection);
   const existing = await findOne<T>(collection, filter);
   if (existing) await soda.replace(collection, existing, value);
   else await soda.insert(collection, value);
 }
 
 export async function listPlayers(): Promise<PlayerProfile[]> {
+  await ensureCollection(COLLECTIONS.players);
   return (await soda.list<PlayerProfile>(COLLECTIONS.players))
     .map((document) => document.value)
     .sort((left, right) => left.displayName.localeCompare(right.displayName, "ko"));
 }
 
 export async function findPlayer(discordUserId: string) {
+  await ensureCollection(COLLECTIONS.players);
   return findOne<PlayerProfile>(COLLECTIONS.players, {discordUserId});
 }
 
@@ -97,6 +96,10 @@ export async function requestPlayerSync(discordUserId: string, now = Date.now())
 export async function deletePlayer(discordUserId: string) {
   const player = await findPlayer(discordUserId);
   if (player) await soda.delete(COLLECTIONS.players, player);
+  await Promise.all([
+    ensureCollection(COLLECTIONS.sessions),
+    ensureCollection(COLLECTIONS.drafts),
+  ]);
   const sessions = await soda.list<TeamSession>(COLLECTIONS.sessions);
   const drafts = await soda.list<TeamDraft>(COLLECTIONS.drafts);
   await Promise.all([
@@ -113,6 +116,7 @@ function hasPlayer(session: TeamSession, discordUserId: string) {
 }
 
 export async function listRecentSessions(limit = 5): Promise<TeamSession[]> {
+  await ensureCollection(COLLECTIONS.sessions);
   return (await soda.list<TeamSession>(COLLECTIONS.sessions))
     .map((document) => document.value)
     .sort((left, right) => right.confirmedAt - left.confirmedAt)
@@ -124,18 +128,22 @@ export async function listAllSessions(): Promise<TeamSession[]> {
 }
 
 export async function saveSession(session: TeamSession) {
+  await ensureCollection(COLLECTIONS.sessions);
   await soda.insert(COLLECTIONS.sessions, session);
 }
 
 export async function findDraft(draftId: string) {
+  await ensureCollection(COLLECTIONS.drafts);
   return findOne<TeamDraft>(COLLECTIONS.drafts, {draftId});
 }
 
 export async function saveDraft(draft: TeamDraft) {
+  await ensureCollection(COLLECTIONS.drafts);
   await upsert(COLLECTIONS.drafts, {draftId: draft.draftId}, draft);
 }
 
 export async function latestSystemStatus(): Promise<SystemStatus | null> {
+  await ensureCollection(COLLECTIONS.status);
   const statuses = (await soda.list<SystemStatus>(COLLECTIONS.status))
     .map((document) => document.value)
     .sort((left, right) => right.heartbeatAt - left.heartbeatAt);
@@ -145,13 +153,16 @@ export async function latestSystemStatus(): Promise<SystemStatus | null> {
 export type LoginAttempt = LoginAttemptState;
 
 export async function getLoginAttempt(ipHash: string) {
+  await ensureCollection(COLLECTIONS.loginAttempts);
   return findOne<LoginAttempt>(COLLECTIONS.loginAttempts, {ipHash});
 }
 
 export async function saveLoginAttempt(attempt: LoginAttempt) {
+  await ensureCollection(COLLECTIONS.loginAttempts);
   await upsert(COLLECTIONS.loginAttempts, {ipHash: attempt.ipHash}, attempt);
 }
 
 export async function clearLoginAttempt(document: SodaDocument<LoginAttempt> | null) {
+  await ensureCollection(COLLECTIONS.loginAttempts);
   if (document) await soda.delete(COLLECTIONS.loginAttempts, document);
 }
