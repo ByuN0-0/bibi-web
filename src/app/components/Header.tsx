@@ -23,10 +23,10 @@ const Header = () => {
                     홈
                   </a>
                   <a
-                      href="#"
+                      href="/lol-member"
                       className="border-transparent hover:border-gray-300 hover:text-gray-300 inline-flex items-center px-1 pt-1 border-b-2 text-sm font-medium"
                   >
-                    명령어
+                    롤 팀 편성
                   </a>
                   <a
                       href="#"

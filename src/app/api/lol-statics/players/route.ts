@@ -34,16 +34,16 @@ export async function POST(request: NextRequest) {
     flexRank: identityChanged ? unranked : existing!.value.flexRank,
     recentMatches: identityChanged ? [] : existing!.value.recentMatches,
     roleStats: identityChanged ? {} : existing!.value.roleStats,
-    syncStatus: identityChanged ? "REQUESTED" : existing!.value.syncStatus,
-    syncRequestedAt: identityChanged ? now : existing!.value.syncRequestedAt,
+    syncStatus: identityChanged ? "FAILED" : existing!.value.syncStatus,
+    syncRequestedAt: identityChanged ? 0 : existing!.value.syncRequestedAt,
     lastSyncStartedAt: identityChanged ? 0 : existing!.value.lastSyncStartedAt,
     lastSyncedAt: existing?.value.lastSyncedAt ?? 0,
-    syncErrorCode: identityChanged ? null : existing!.value.syncErrorCode,
+    syncErrorCode: identityChanged ? "SYNC_REQUIRED" : existing!.value.syncErrorCode,
     revision: (existing?.value.revision ?? 0) + 1,
     createdAt: existing?.value.createdAt ?? now, updatedAt: now,
   };
   await savePlayer(profile);
-  return NextResponse.json({player: profile}, {status: existing ? 200 : 201});
+  return NextResponse.json({player: profile, needsSync: identityChanged}, {status: existing ? 200 : 201});
 }
 
 function parsePlayerInput(input: unknown): {value: {

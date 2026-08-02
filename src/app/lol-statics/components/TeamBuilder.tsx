@@ -3,7 +3,13 @@
 import {useMemo, useState} from "react";
 import {ROLE_LABEL, type PlayerProfile, type TeamAssignment, type TeamDraft} from "@/lib/lol/types";
 
-export default function TeamBuilder({players}: {players: PlayerProfile[]}) {
+export default function TeamBuilder({
+  players,
+  publicMode = false,
+}: {
+  players: PlayerProfile[];
+  publicMode?: boolean;
+}) {
   const [selected, setSelected] = useState<string[]>([]);
   const [draft, setDraft] = useState<TeamDraft | null>(null);
   const [pending, setPending] = useState(false);
@@ -21,19 +27,43 @@ export default function TeamBuilder({players}: {players: PlayerProfile[]}) {
   async function act(action: "generate" | "reroll" | "confirm") {
     setPending(true);
     setError("");
-    const response = await fetch("/api/lol-statics/team", {
-      method: "POST",
-      headers: {"Content-Type": "application/json"},
-      body: JSON.stringify({
-        action,
-        selectedDiscordUserIds: selected,
-        draftId: draft?.draftId,
-      }),
-    });
-    const result = await response.json();
-    if (!response.ok) setError(result.error ?? "팀을 편성하지 못했습니다.");
-    else setDraft(result.draft);
-    setPending(false);
+    try {
+      const response = await fetch(publicMode ? "/api/lol-member/team" : "/api/lol-statics/team", {
+        method: "POST",
+        headers: {"Content-Type": "application/json"},
+        body: JSON.stringify(publicMode ? {
+          selectedDiscordUserIds: selected,
+          excludedSignatures: action === "reroll" ? draft?.excludedSignatures ?? [] : [],
+        } : {
+            action,
+            selectedDiscordUserIds: selected,
+            draftId: draft?.draftId,
+          }),
+      });
+      const result = await response.json();
+      if (!response.ok) setError(result.error ?? "팀을 편성하지 못했습니다.");
+      else if (publicMode) {
+        const now = Date.now();
+        setDraft({
+          schemaVersion: 1,
+          draftId: "public",
+          hostDiscordUserId: "public-web",
+          selectedDiscordUserIds: selected,
+          excludedSignatures: [
+            ...(action === "reroll" ? draft?.excludedSignatures ?? [] : []),
+            result.composition.signature,
+          ],
+          composition: result.composition,
+          status: "DRAFT",
+          expiresAt: now,
+          updatedAt: now,
+        });
+      } else setDraft(result.draft);
+    } catch {
+      setError("팀 편성 서버에 연결하지 못했습니다. 잠시 후 다시 시도해 주세요.");
+    } finally {
+      setPending(false);
+    }
   }
 
   return (
@@ -60,7 +90,7 @@ export default function TeamBuilder({players}: {players: PlayerProfile[]}) {
         <div className="mt-5 flex flex-wrap gap-2">
           <button disabled={pending || selected.length !== 10 || draft?.status === "CONFIRMED"} onClick={() => act("generate")} className="rounded-xl bg-cyan-400 px-4 py-2.5 text-sm font-bold text-slate-950 disabled:opacity-40">팀 생성</button>
           <button disabled={pending || !draft || draft.status === "CONFIRMED"} onClick={() => act("reroll")} className="rounded-xl border border-white/15 px-4 py-2.5 text-sm font-semibold disabled:opacity-40">다시 섞기</button>
-          <button disabled={pending || !draft || draft.status === "CONFIRMED"} onClick={() => act("confirm")} className="rounded-xl border border-emerald-400/30 bg-emerald-400/10 px-4 py-2.5 text-sm font-semibold text-emerald-300 disabled:opacity-40">확정</button>
+          {!publicMode && <button disabled={pending || !draft || draft.status === "CONFIRMED"} onClick={() => act("confirm")} className="rounded-xl border border-emerald-400/30 bg-emerald-400/10 px-4 py-2.5 text-sm font-semibold text-emerald-300 disabled:opacity-40">확정</button>}
           {pending && <span className="self-center text-xs text-slate-500">계산 중…</span>}
         </div>
         {error && <p className="mt-4 rounded-xl bg-rose-400/10 px-4 py-3 text-sm text-rose-200">{error}</p>}

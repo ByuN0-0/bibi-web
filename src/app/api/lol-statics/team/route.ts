@@ -2,13 +2,13 @@ import {NextRequest, NextResponse} from "next/server";
 import {hasApiSession, hasSameOrigin} from "@/lib/auth-server";
 import {
   findDraft,
-  latestSystemStatus,
-  listPlayers,
-  listRecentSessions,
   saveDraft,
   saveSession,
 } from "@/lib/lol/repository";
-import {balanceTeam} from "@/lib/lol/team-balancer";
+import {
+  generateTeamComposition,
+  TeamGenerationError,
+} from "@/lib/lol/team-generator";
 import {ALGORITHM_VERSION, type TeamDraft} from "@/lib/lol/types";
 
 type RequestBody = {
@@ -28,34 +28,23 @@ export async function POST(request: NextRequest) {
     }
     return responseError("지원하지 않는 작업입니다.", 400);
   } catch (error) {
+    if (error instanceof TeamGenerationError) {
+      return responseError(error.message, error.status);
+    }
     const message = error instanceof Error ? error.message : "팀 편성에 실패했습니다.";
     return responseError(message, 400);
   }
 }
 
 async function generate(body: RequestBody) {
-  const status = await latestSystemStatus();
-  if (!status || status.algorithmVersion !== ALGORITHM_VERSION) {
-    return responseError("Java 봇과 웹의 팀 편성 알고리즘 버전이 일치하지 않습니다.", 409);
-  }
   const previous = body.draftId ? await findDraft(body.draftId) : null;
   if (body.action === "reroll" && !previous) return responseError("내전 초안을 찾을 수 없습니다.", 404);
   if (previous?.value.status === "CONFIRMED") return responseError("이미 확정된 내전입니다.", 409);
   const selected = body.action === "reroll"
     ? previous!.value.selectedDiscordUserIds
     : body.selectedDiscordUserIds ?? [];
-  if (selected.length !== 10 || new Set(selected).size !== 10) {
-    return responseError("선수를 정확히 10명 선택해 주세요.", 400);
-  }
-  const byId = new Map((await listPlayers()).map((player) => [player.discordUserId, player]));
-  const players = selected.map((id) => byId.get(id));
-  if (players.some((player) => !player)) return responseError("미등록 선수가 포함되어 있습니다.", 400);
-  const pending = players.filter((player) => player!.syncStatus !== "READY" || !player!.lastSyncedAt);
-  if (pending.length) {
-    return responseError(`초기 동기화가 끝나지 않은 선수가 있습니다: ${pending.map((player) => player!.displayName).join(", ")}`, 409);
-  }
   const excluded = new Set(previous?.value.excludedSignatures ?? []);
-  const composition = balanceTeam(players as NonNullable<(typeof players)[number]>[], await listRecentSessions(5), excluded);
+  const composition = await generateTeamComposition(selected, [...excluded]);
   excluded.add(composition.signature);
   const now = Date.now();
   const draft: TeamDraft = {

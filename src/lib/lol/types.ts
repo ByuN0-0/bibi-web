@@ -33,6 +33,21 @@ export type RoleStats = {
   balanceSignal: number;
 };
 
+export type MatchPerformance = {
+  matchId: string;
+  playedAt: number;
+  role: Role;
+  goldDiff15: number;
+  xpDiff15: number;
+  csDiff15: number;
+  damagePerGoldDiff: number;
+  killParticipationDiff: number;
+  visionPerMinuteDiff: number;
+  crowdControlPerMinuteDiff: number;
+  objectiveParticipationDiff: number;
+  deathRateDiff: number;
+};
+
 export type PlayerProfile = {
   schemaVersion: number;
   discordUserId: string;
@@ -45,7 +60,7 @@ export type PlayerProfile = {
   secondaryRole: Role;
   soloRank: RankInfo;
   flexRank: RankInfo;
-  recentMatches: unknown[];
+  recentMatches: MatchPerformance[];
   roleStats: Partial<Record<Role, RoleStats>>;
   syncStatus: "REQUESTED" | "SYNCING" | "READY" | "FAILED";
   syncRequestedAt: number;

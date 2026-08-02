@@ -10,7 +10,15 @@ export type ServerEnv = {
   sodaTimeoutMs: number;
 };
 
+export type RiotServerEnv = {
+  apiKey: string;
+  platform: "kr";
+  region: "asia";
+  timeoutMs: number;
+};
+
 let cached: ServerEnv | null = null;
+let cachedRiot: RiotServerEnv | null = null;
 
 export function getServerEnv(): ServerEnv {
   if (cached) return cached;
@@ -49,4 +57,25 @@ export function getServerEnv(): ServerEnv {
     sodaTimeoutMs: timeout * 1000,
   };
   return cached;
+}
+
+export function getRiotServerEnv(): RiotServerEnv {
+  if (cachedRiot) return cachedRiot;
+  const apiKey = process.env.RIOT_API_KEY?.trim();
+  if (!apiKey) throw new Error("Missing required environment variable: RIOT_API_KEY");
+  const platform = (process.env.RIOT_PLATFORM ?? "kr").trim().toLowerCase();
+  const region = (process.env.RIOT_REGION ?? "asia").trim().toLowerCase();
+  const timeout = Number(process.env.RIOT_TIMEOUT_SECONDS ?? "10");
+  if (platform !== "kr") throw new Error("RIOT_PLATFORM must be kr");
+  if (region !== "asia") throw new Error("RIOT_REGION must be asia");
+  if (!Number.isInteger(timeout) || timeout < 1 || timeout > 60) {
+    throw new Error("RIOT_TIMEOUT_SECONDS must be between 1 and 60");
+  }
+  cachedRiot = {
+    apiKey,
+    platform: "kr",
+    region: "asia",
+    timeoutMs: timeout * 1000,
+  };
+  return cachedRiot;
 }

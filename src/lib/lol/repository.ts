@@ -7,6 +7,10 @@ import type {
   TeamSession,
 } from "@/lib/lol/types";
 import type {LoginAttemptState} from "@/lib/login-rate-limit";
+import {
+  syncRequestAvailability,
+  type SyncRequestResult,
+} from "@/lib/lol/player-sync";
 
 export const COLLECTIONS = {
   players: "bibi_lol_players",
@@ -15,6 +19,12 @@ export const COLLECTIONS = {
   status: "bibi_lol_system_status",
   loginAttempts: "bibi_web_login_attempts",
 } as const;
+
+export class PlayerPuuidConflictError extends Error {
+  constructor() {
+    super("이미 다른 Discord 계정에 등록된 Riot 계정입니다.");
+  }
+}
 
 const collectionInitializations = new Map<string, Promise<void>>();
 
@@ -69,28 +79,84 @@ export async function savePlayer(profile: PlayerProfile) {
   await upsert(COLLECTIONS.players, {discordUserId: profile.discordUserId}, profile);
 }
 
-export async function requestPlayerSync(discordUserId: string, now = Date.now()) {
+export async function claimPlayerWebSync(
+  discordUserId: string,
+  now = Date.now(),
+): Promise<{player: PlayerProfile; result?: never} | {player?: never; result: SyncRequestResult}> {
   for (let attempt = 0; attempt < 3; attempt += 1) {
     const document = await findPlayer(discordUserId);
-    if (!document) return false;
-    const requested: PlayerProfile = {
+    if (!document) return {result: {discordUserId, status: "NOT_FOUND"}};
+    const availability = syncRequestAvailability(document.value, now);
+    if (availability.status !== "ALLOWED") {
+      return {result: {discordUserId, ...availability}};
+    }
+    const syncing: PlayerProfile = {
       ...document.value,
-      syncStatus: "REQUESTED",
+      syncStatus: "SYNCING",
       syncRequestedAt: now,
+      lastSyncStartedAt: now,
       syncErrorCode: null,
       revision: document.value.revision + 1,
       updatedAt: now,
     };
     try {
-      await soda.replace(COLLECTIONS.players, document, requested);
-      return true;
+      await soda.replace(COLLECTIONS.players, document, syncing);
+      return {player: syncing};
     } catch (error) {
       if (!(error instanceof Error) || error.message !== "SODA_CONFLICT" || attempt === 2) {
         throw error;
       }
     }
   }
-  return false;
+  return {result: {discordUserId, status: "CONFLICT"}};
+}
+
+export async function completePlayerWebSync(
+  discordUserId: string,
+  claimRevision: number,
+  data: Pick<PlayerProfile, "riotGameName" | "riotTagLine" | "puuid" | "summonerId" | "soloRank" | "flexRank" | "recentMatches" | "roleStats">,
+  now = Date.now(),
+) {
+  const document = await findPlayer(discordUserId);
+  if (!document || document.value.revision !== claimRevision || document.value.syncStatus !== "SYNCING") {
+    return null;
+  }
+  if (data.puuid) {
+    const duplicate = (await soda.query<PlayerProfile>(COLLECTIONS.players, {puuid: data.puuid}))
+      .some((candidate) => candidate.value.discordUserId !== discordUserId);
+    if (duplicate) throw new PlayerPuuidConflictError();
+  }
+  const synced: PlayerProfile = {
+    ...document.value,
+    ...data,
+    syncStatus: "READY",
+    lastSyncedAt: now,
+    syncErrorCode: null,
+    revision: document.value.revision + 1,
+    updatedAt: now,
+  };
+  await soda.replace(COLLECTIONS.players, document, synced);
+  return synced;
+}
+
+export async function failPlayerWebSync(
+  discordUserId: string,
+  claimRevision: number,
+  errorCode: string,
+  now = Date.now(),
+) {
+  const document = await findPlayer(discordUserId);
+  if (!document || document.value.revision !== claimRevision || document.value.syncStatus !== "SYNCING") {
+    return false;
+  }
+  await soda.replace(COLLECTIONS.players, document, {
+    ...document.value,
+    syncStatus: "FAILED",
+    syncErrorCode: errorCode,
+    revision: document.value.revision + 1,
+    updatedAt: now,
+  } satisfies PlayerProfile);
+  return true;
 }
 
 export async function deletePlayer(discordUserId: string) {
