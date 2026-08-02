@@ -11,9 +11,10 @@ import {
   roleFromQuest,
   selectSpellQuestCombination,
   selectTeamSpellQuestAssignments,
+  selectUniqueAssetAssignments,
   validateMechanicalTotals,
 } from "./scoreboard-machine-core.mjs";
-import {isObtainableInventoryItem, isScoreboardKeystone, participantAssetCoordinates, participantInventoryCoordinates} from "./resolve-ddragon-assets.mjs";
+import {banCropLooksUnselected, isObtainableInventoryItem, isScoreboardKeystone, participantAssetCoordinates, participantInventoryCoordinates} from "./resolve-ddragon-assets.mjs";
 
 describe("scoreboard machine parsing", () => {
   it("normalizes common OCR substitutions", () => {
@@ -113,6 +114,32 @@ describe("summoner spell and quest constraints", () => {
     expect(result.assignments.map((assignment) => assignment.role).sort()).toEqual(["BOTTOM", "JUNGLE", "MIDDLE", "TOP", "UTILITY"].sort());
     expect(result.assignments.map((assignment) => roleFromQuest(assignment.quest.candidate))).toEqual(result.assignments.map((assignment) => assignment.role));
     expect(result.assignments[4].role).toBe("UTILITY");
+  });
+});
+
+describe("ban assignment constraints", () => {
+  it("detects an unselected ban slot before champion matching", () => {
+    const empty = Buffer.alloc(24 * 24 * 3, 12);
+    const occupied = Buffer.alloc(24 * 24 * 3);
+    for (let index = 0; index < occupied.length; index += 3) {
+      occupied[index] = index % 251;
+      occupied[index + 1] = (index * 3) % 241;
+      occupied[index + 2] = (index * 7) % 239;
+    }
+    expect(banCropLooksUnselected(empty)).toBe(false);
+    expect(banCropLooksUnselected(occupied)).toBe(false);
+  });
+
+  it("selects the lowest-scoring unique champion assignment for one team", () => {
+    const scored = (id, matchScore) => ({candidate: {id}, matchScore});
+    const result = selectUniqueAssetAssignments([
+      [scored("Locke", 1), scored("Twitch", 3)],
+      [scored("Locke", 1), scored("Fiddlesticks", 2)],
+      [scored("Teemo", 1)],
+      [scored("Khazix", 1)],
+      [scored("Locke", 1), scored("Urgot", 10)],
+    ]);
+    expect(result.assignments.map((entry) => entry.candidate.id)).toEqual(["Twitch", "Fiddlesticks", "Teemo", "Khazix", "Locke"]);
   });
 });
 

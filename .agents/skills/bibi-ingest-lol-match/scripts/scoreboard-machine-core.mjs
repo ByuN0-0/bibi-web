@@ -258,6 +258,34 @@ export function selectTeamSpellQuestAssignments(participants) {
   };
 }
 
+export function selectUniqueAssetAssignments(candidatePools) {
+  let best = null;
+  const visit = (index, selected, used, totalScore) => {
+    if (best && totalScore >= best.totalScore) return;
+    if (index === candidatePools.length) {
+      best = {assignments: [...selected], totalScore};
+      return;
+    }
+    for (const entry of candidatePools[index] ?? []) {
+      const id = entry.candidate?.id;
+      if (!id) {
+        selected.push(entry);
+        visit(index + 1, selected, used, totalScore + entry.matchScore);
+        selected.pop();
+        continue;
+      }
+      if (used.has(id)) continue;
+      used.add(id);
+      selected.push(entry);
+      visit(index + 1, selected, used, totalScore + entry.matchScore);
+      selected.pop();
+      used.delete(id);
+    }
+  };
+  visit(0, [], new Set(), 0);
+  return best;
+}
+
 export function roleFromQuest(asset) {
   if (asset?.questRole) return asset.questRole;
   const id = String(asset?.id ?? "");

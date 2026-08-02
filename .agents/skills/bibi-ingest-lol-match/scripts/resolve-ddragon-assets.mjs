@@ -4,7 +4,7 @@ import {mkdir, readFile, writeFile} from "node:fs/promises";
 import {tmpdir} from "node:os";
 import {join} from "node:path";
 import {pathToFileURL} from "node:url";
-import {MATCH_ROLE_ORDER, selectTeamSpellQuestAssignments} from "./scoreboard-machine-core.mjs";
+import {MATCH_ROLE_ORDER, selectTeamSpellQuestAssignments, selectUniqueAssetAssignments} from "./scoreboard-machine-core.mjs";
 
 const ORIGIN = "https://ddragon.leagueoflegends.com";
 const SCOREBOARD_KEYSTONE_NAMES = new Set([
@@ -12,6 +12,7 @@ const SCOREBOARD_KEYSTONE_NAMES = new Set([
   "기민한발놀림", "치명적속도", "집중공격", "정복자", "수호자", "여진", "착취의손아귀",
   "빙결강화", "선제공격", "봉인풀린주문서",
 ]);
+const UNSELECTED_BAN_SHAPE_HASH = 0x8143444f572e58a0n;
 const binaryCache = new Map();
 const iconCache = new Map();
 const iconHashCache = new WeakMap();
@@ -90,6 +91,7 @@ export async function resolveDataDragonAssets(input, options = {}) {
   for (const [teamIndex, team] of payload.teamStats.entries()) {
     team.bans = await resolveSlots(team.bans, "ban", `teamStats[${teamIndex}].bans`, banCoordinates(team.team), true);
   }
+  for (const teamIndex of payload.teamStats.keys()) applyUniqueTeamBans(teamIndex);
   const originalParticipants = [...payload.participants];
   const teamRowIndex = {BLUE: 0, RED: 0};
   for (const [index, participant] of payload.participants.entries()) {
@@ -153,6 +155,14 @@ async function resolveSlots(values, kind, field, coordinates, nullable, candidat
 }
 async function resolveNullable(value, kind, field, coordinates) { return value === null ? null : resolveValue(value, kind, field, coordinates); }
 async function resolveValue(value, kind, field, coordinates, candidates = catalogs[kind]) {
+  if (kind === "ban" && screenshot && await isUnselectedBan(screenshot, coordinates)) {
+    const empty = {candidate: null, hashDistance: 0, pixelError: 0, matchScore: 0};
+    candidatePools.set(field, [empty]);
+    const resolution = {field, kind, selected: null, accepted: true, score: 0, runnerUpGap: 0, cropOffset: {x: 0, y: 0}, reason: "unselected-ban"};
+    resolutions.push(resolution);
+    resolutionByField.set(field, resolution);
+    return null;
+  }
   if (value && typeof value === "object" && value.id && value.name && value.iconPath) {
     const canonical = candidates.find((candidate) => candidate.id === String(value.id));
     if (canonical && canonical.name === value.name && canonical.iconPath === value.iconPath) return exactAsset(canonical, field);
@@ -186,7 +196,8 @@ async function compareCrop(buffer, crop, candidates, kind, field) {
       for (const icon of icons) scored.push({candidate, icon, hashDistance: hamming(targetHash, cachedIconHash(icon))});
     }
     const candidateLimit = kind === "quest" ? catalogs.quest.length : 5;
-    const precisionPool = bestCandidateVariants(scored.sort((a, b) => a.hashDistance - b.hashDistance).slice(0, 150), target.normalized, kind).slice(0, candidateLimit);
+    const hashShortlist = scored.sort((a, b) => a.hashDistance - b.hashDistance).slice(0, kind === "ban" ? scored.length : 150);
+    const precisionPool = bestCandidateVariants(hashShortlist, target.normalized, kind).slice(0, candidateLimit);
     if (precisionPool[0]) evaluated.push({target, precisionPool, quality: cropQuality(precisionPool, target)});
   }
   const chosen = evaluated.sort((left, right) => left.quality - right.quality)[0];
@@ -235,6 +246,40 @@ function cachedIconHash(icon) {
     iconHashCache.set(icon, hash);
   }
   return hash;
+}
+
+async function isUnselectedBan(buffer, crop) {
+  const sharp = await getSharp();
+  normalizedScreenPromise ??= sharp(buffer).resize({width: 1028}).png().toBuffer();
+  const normalizedScreen = await normalizedScreenPromise;
+  const fullInterior = {
+    left: crop.left + 5,
+    top: crop.top + (crop.top < 350 ? -2 : -1),
+    width: 24,
+    height: 24,
+  };
+  const raw = await sharp(normalizedScreen).extract(fullInterior).resize(24, 24).removeAlpha().raw().toBuffer();
+  return banCropLooksUnselected(raw);
+}
+
+export function banCropLooksUnselected(raw) {
+  const luminances = [];
+  let saturation = 0;
+  for (let y = 1; y < 23; y += 1) {
+    for (let x = 1; x < 23; x += 1) {
+      const diagonal = x + y;
+      if (Math.abs(diagonal - 20) <= 2 || Math.abs(diagonal - 28) <= 2) continue;
+      const index = (y * 24 + x) * 3;
+      const red = raw[index]; const green = raw[index + 1]; const blue = raw[index + 2];
+      saturation += Math.max(red, green, blue) - Math.min(red, green, blue);
+      luminances.push((red + green + blue) / 3);
+    }
+  }
+  const meanSaturation = saturation / luminances.length;
+  const meanLuminance = luminances.reduce((sum, value) => sum + value, 0) / luminances.length;
+  const deviation = Math.sqrt(luminances.reduce((sum, value) => sum + (value - meanLuminance) ** 2, 0) / luminances.length);
+  const shapeDistance = hamming(UNSELECTED_BAN_SHAPE_HASH, differenceHash(raw, 24, 24, 3));
+  return shapeDistance <= 12 && meanSaturation < 18 && meanLuminance < 40 && deviation < 28;
 }
 
 function bestCandidateVariants(entries, normalized, kind) {
@@ -321,11 +366,12 @@ function meanError(left, right, kind) {
   for (let pixel = 0; pixel < 32 * 32; pixel += 1) {
     const x = pixel % 32; const y = Math.floor(pixel / 32);
     if ((kind === "champion" || kind === "perk" || kind === "ban") && ((x - 15.5) ** 2 + (y - 15.5) ** 2 > (kind === "champion" ? 145 : 210))) continue;
-    if (kind === "ban" && Math.abs((x + y) - 31) < 4) continue;
+    if (kind === "ban" && Math.abs((x + y) - 31) < 7) continue;
     pixels.push(pixel);
   }
   const correlations = [0, 1, 2].map((channel) => correlation(left, right, pixels, channel));
   const luminanceCorrelation = correlation(left, right, pixels, -1);
+  if (kind === "ban") return (1 - luminanceCorrelation) * 1000;
   const averageColorCorrelation = correlations.reduce((sum, value) => sum + value, 0) / correlations.length;
   const strongestColorCorrelation = Math.max(...correlations);
   return (1 - (luminanceCorrelation * 0.25 + strongestColorCorrelation * 0.55 + averageColorCorrelation * 0.2)) * 1000;
@@ -367,6 +413,24 @@ function applyTeamSpellQuestConstraints(team) {
       resolution.accepted ||= selected[fieldIndex].pixelError <= 260 && fieldGap >= 10;
       resolution.reason = "team-role-spell-quest-constraint";
     }
+  }
+}
+function applyUniqueTeamBans(teamIndex) {
+  const fields = Array.from({length: 5}, (_, banIndex) => `teamStats[${teamIndex}].bans[${banIndex}]`);
+  const result = selectUniqueAssetAssignments(fields.map((field) => candidatePools.get(field)));
+  if (!result) {
+    unresolved.push(`teamStats[${teamIndex}].bans: five unique champions could not be resolved`);
+    return;
+  }
+  payload.teamStats[teamIndex].bans = result.assignments.map((entry) => assetRef(entry.candidate));
+  for (let index = 0; index < fields.length; index += 1) {
+    const resolution = resolutionByField.get(fields[index]);
+    const selected = result.assignments[index];
+    if (!resolution || resolution.selected?.id === selected.candidate?.id) continue;
+    resolution.selected = assetRef(selected.candidate);
+    resolution.accepted = false;
+    resolution.score = Math.round(selected.matchScore);
+    resolution.reason = "team-unique-ban-constraint";
   }
 }
 function banCoordinates(team) { const top = (team === "BLUE" ? 198 : 413) + banOffsetY; return [[845, top], [910, top], [975, top], [845, top + 35], [910, top + 35]].map(([left, y]) => ({left, top: y, width: 24, height: 24})); }
@@ -422,7 +486,7 @@ function nativeIconSize(kind) {
   if (kind === "champion") return 32;
   return 22;
 }
-function assetRef({id, name, iconPath}) { return {id, name, iconPath}; }
+function assetRef(entry) { return entry ? {id: entry.id, name: entry.name, iconPath: entry.iconPath} : null; }
 function luminance(raw, index) { return raw[index] * 0.2126 + raw[index + 1] * 0.7152 + raw[index + 2] * 0.0722; }
 function correlation(left, right, pixels, channel) {
   const sample = (raw, pixel) => channel < 0 ? luminance(raw, pixel * 3) : raw[pixel * 3 + channel];
