@@ -1,57 +1,69 @@
+import Image from "next/image";
+import Link from "next/link";
 
-const Header = () => {
+const navigation = [
+  {href: "/#features", label: "기능"},
+  {href: "/#commands", label: "명령어"},
+  {href: "/lol-member", label: "롤 팀 편성"},
+];
+
+export default function Header() {
   return (
-      <>
-        {/* 네비게이션 영역 */}
-        <nav className="fixed w-full bg-gray-800 border-b border-gray-700 z-50">
-          <div className="max-w-8xl mx-auto px-4 sm:px-6 lg:px-8">
-            <div className="flex justify-between h-16">
-              <div className="flex">
-                <div className="flex-shrink-0 flex items-center">
-                  <img
-                      className="h-8 w-auto rounded-full"
-                      src="/images/bibi-logo.png"
-                      alt="Bot Logo"
-                  />
-                  <span className="ml-2 text-xl font-bold">비비</span>
-                </div>
-                <div className="hidden sm:ml-6 sm:flex sm:space-x-8">
-                  <a
-                      href="#"
-                      className="border-custom text-custom border-b-2 inline-flex items-center px-1 pt-1 text-sm font-medium"
-                  >
-                    홈
-                  </a>
-                  <a
-                      href="/lol-member"
-                      className="border-transparent hover:border-gray-300 hover:text-gray-300 inline-flex items-center px-1 pt-1 border-b-2 text-sm font-medium"
-                  >
-                    롤 팀 편성
-                  </a>
-                  <a
-                      href="#"
-                      className="border-transparent hover:border-gray-300 hover:text-gray-300 inline-flex items-center px-1 pt-1 border-b-2 text-sm font-medium"
-                  >
-                    가이드
-                  </a>
-                  <a
-                      href="#"
-                      className="border-transparent hover:border-gray-300 hover:text-gray-300 inline-flex items-center px-1 pt-1 border-b-2 text-sm font-medium"
-                  >
-                    지원
-                  </a>
-                </div>
-              </div>
-              <div className="flex items-center">
-                <button className="!rounded-2xl bg-custom hover:bg-blue-600 px-4 py-2 text-sm font-medium">
-                  봇 초대하기
-                </button>
-              </div>
-            </div>
-          </div>
-        </nav>
-      </>
-  );
-};
+    <header className="fixed inset-x-0 top-0 z-50 border-b border-[var(--hairline-soft)] bg-white/95 backdrop-blur-sm">
+      <div className="page-shell flex h-[72px] items-center justify-between gap-5">
+        <Link href="/" className="flex min-h-12 items-center gap-3" aria-label="비비 홈">
+          <Image
+            src="/images/bibi-logo.png"
+            alt=""
+            width={40}
+            height={40}
+            className="h-10 w-10 rounded-full object-cover"
+            priority
+          />
+          <span className="text-lg font-bold tracking-[-0.02em]">비비</span>
+        </Link>
 
-export default Header;
+        <nav className="hidden items-center gap-1 sm:flex" aria-label="주요 메뉴">
+          {navigation.map((item) => (
+            <Link
+              key={item.href}
+              href={item.href}
+              className="flex min-h-12 items-center rounded-full px-4 text-sm font-semibold text-[var(--body)] hover:bg-[var(--surface-soft)] hover:text-[var(--ink)]"
+            >
+              {item.label}
+            </Link>
+          ))}
+        </nav>
+
+        <div className="hidden sm:block">
+          <Link href="/lol-member" className="primary-button">
+            팀 편성 열기
+            <ArrowIcon />
+          </Link>
+        </div>
+
+        <details className="group relative sm:hidden">
+          <summary className="grid h-12 w-12 cursor-pointer list-none place-items-center rounded-full border border-[var(--hairline)] bg-white [&::-webkit-details-marker]:hidden" aria-label="메뉴 열기">
+            <MenuIcon />
+          </summary>
+          <nav className="absolute right-0 top-14 w-52 overflow-hidden rounded-2xl border border-[var(--hairline-soft)] bg-white p-2 shadow-[var(--shadow-float)]" aria-label="모바일 메뉴">
+            <Link href="/" className="block rounded-xl px-4 py-3 text-sm font-semibold hover:bg-[var(--surface-soft)]">홈</Link>
+            {navigation.map((item) => (
+              <Link key={item.href} href={item.href} className="block rounded-xl px-4 py-3 text-sm font-semibold hover:bg-[var(--surface-soft)]">
+                {item.label}
+              </Link>
+            ))}
+          </nav>
+        </details>
+      </div>
+    </header>
+  );
+}
+
+function ArrowIcon() {
+  return <svg aria-hidden="true" viewBox="0 0 20 20" className="h-4 w-4 fill-none stroke-current" strokeWidth="1.8"><path d="M4 10h12M11 5l5 5-5 5" /></svg>;
+}
+
+function MenuIcon() {
+  return <svg aria-hidden="true" viewBox="0 0 24 24" className="h-5 w-5 fill-none stroke-current" strokeWidth="1.8" strokeLinecap="round"><path d="M5 7h14M5 12h14M5 17h14" /></svg>;
+}

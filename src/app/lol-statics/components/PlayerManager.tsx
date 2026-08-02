@@ -108,9 +108,9 @@ export default function PlayerManager({initialPlayers}: {initialPlayers: PlayerP
 
   return (
     <div className="space-y-4">
-      {message && <p className="rounded-xl border border-white/[0.08] bg-white/5 px-4 py-3 text-sm text-slate-300">{message}</p>}
+      {message && <p className="rounded-xl border border-[var(--hairline)] bg-white px-4 py-3 text-sm text-[var(--body)]">{message}</p>}
       <div className="grid gap-6 xl:grid-cols-[380px_1fr]">
-        <form onSubmit={submit} className="h-fit rounded-2xl border border-white/10 bg-white/[0.035] p-6 xl:sticky xl:top-8">
+        <form onSubmit={submit} className="surface-card h-fit p-6 xl:sticky xl:top-8">
           <h2 className="font-bold">선수 등록·수정</h2>
           <div className="mt-5 space-y-3">
             <Field label="Discord 사용자 ID" value={form.discordUserId} disabled={players.some((player) => player.discordUserId === form.discordUserId)} onChange={(value) => setForm({...form, discordUserId: value})} />
@@ -125,48 +125,48 @@ export default function PlayerManager({initialPlayers}: {initialPlayers: PlayerP
             </div>
           </div>
           <div className="mt-5 flex gap-2">
-            <button disabled={pendingAction !== null} className="flex-1 rounded-xl bg-cyan-400 px-4 py-2.5 text-sm font-bold text-slate-950 disabled:opacity-50">저장</button>
-            <button type="button" onClick={() => setForm(empty)} className="rounded-xl border border-white/10 px-4 text-sm">초기화</button>
+            <button disabled={pendingAction !== null} className="primary-button flex-1">저장</button>
+            <button type="button" onClick={() => setForm(empty)} className="secondary-button">초기화</button>
           </div>
         </form>
 
-        <section className="rounded-2xl border border-white/10 bg-white/[0.035] p-5 sm:p-6">
+        <section className="surface-card p-5 sm:p-6">
           <div className="flex items-center justify-between gap-4">
-            <div><h2 className="font-bold">등록 선수 {players.length}명</h2><p className="mt-1 text-xs text-slate-500">웹 서버 직접 갱신 · 선수별 15분에 한 번 가능</p></div>
+            <div><h2 className="font-bold">등록 선수 {players.length}명</h2><p className="mt-1 text-xs text-[var(--muted)]">웹 서버 직접 갱신 · 선수별 15분에 한 번 가능</p></div>
           </div>
           <div className="mt-5 space-y-3">
             {players.map((player) => {
               const inProgress = player.syncStatus === "REQUESTED" || player.syncStatus === "SYNCING";
               return (
-                <details key={player.discordUserId} className="group rounded-xl border border-white/[0.08] bg-black/10 p-4">
+                <details key={player.discordUserId} className="group rounded-xl border border-[var(--hairline-soft)] bg-white p-4 open:border-[var(--hairline)]">
                   <summary className="cursor-pointer list-none">
                     <div className="flex flex-wrap items-center justify-between gap-3">
                       <div>
-                        <p className="font-semibold">{player.displayName} <span className="font-normal text-slate-500">· {player.riotGameName}#{player.riotTagLine}</span></p>
-                        <p className="mt-1 text-xs text-slate-500">{ROLE_LABEL[player.primaryRole]} / {ROLE_LABEL[player.secondaryRole]} · 솔랭 {rankDisplay(player.soloRank)} · 자랭 {rankDisplay(player.flexRank)}</p>
+                        <p className="font-semibold">{player.displayName} <span className="font-normal text-[var(--muted)]">· {player.riotGameName}#{player.riotTagLine}</span></p>
+                        <p className="mt-1 text-xs text-[var(--muted)]">{ROLE_LABEL[player.primaryRole]} / {ROLE_LABEL[player.secondaryRole]} · 솔랭 {rankDisplay(player.soloRank)} · 자랭 {rankDisplay(player.flexRank)}</p>
                       </div>
-                      <span className={`rounded-full px-2.5 py-1 text-[10px] font-bold ${player.syncStatus === "READY" ? "bg-emerald-400/10 text-emerald-300" : player.syncStatus === "FAILED" ? "bg-rose-400/10 text-rose-300" : "bg-amber-400/10 text-amber-300"}`}>{statusLabel[player.syncStatus]}</span>
+                      <span className={`rounded-full px-2.5 py-1 text-[10px] font-bold ${player.syncStatus === "READY" ? "bg-[var(--success-soft)] text-[var(--success)]" : player.syncStatus === "FAILED" ? "bg-[var(--error-soft)] text-[var(--error)]" : "bg-[var(--warning-soft)] text-[var(--warning)]"}`}>{statusLabel[player.syncStatus]}</span>
                     </div>
                   </summary>
-                  <div className="mt-4 border-t border-white/[0.07] pt-4">
-                    <p className="mb-3 text-xs text-slate-500">{syncDetail(player)}</p>
-                    <p className="mb-3 text-sm font-bold text-cyan-300">종합 실력지표 {overallScore(player)}점</p>
+                  <div className="mt-4 border-t border-[var(--hairline-soft)] pt-4">
+                    <p className="mb-3 text-xs text-[var(--muted)]">{syncDetail(player)}</p>
+                    <p className="mb-3 text-sm font-bold text-[var(--primary)]">종합 실력지표 {overallScore(player)}점</p>
                     <div className="grid gap-2 sm:grid-cols-2 lg:grid-cols-3">
                       {ROLES.map((role) => {
                         const stats = player.roleStats?.[role];
-                        return <div key={role} className="rounded-lg bg-white/[0.03] p-3 text-xs"><div className="flex justify-between"><p className="font-semibold text-slate-300">{ROLE_LABEL[role]}</p><p className="font-bold text-slate-200">{Math.round((stats?.balanceSignal ?? 0.35) * 100)}점</p></div><p className="mt-2 text-slate-500">표본 {stats?.sampleCount ?? 0}경기 · 신뢰도 {Math.round((stats?.confidence ?? 0) * 100)}%</p><p className="mt-1 text-slate-500">15분 골드 {Math.round(stats?.goldDiff15 ?? 0)} · XP {Math.round(stats?.xpDiff15 ?? 0)} · CS {(stats?.csDiff15 ?? 0).toFixed(1)}</p><p className="mt-1 text-slate-500">피해효율 {(stats?.damagePerGoldDiff ?? 0).toFixed(2)} · 킬관여 {(stats?.killParticipationDiff ?? 0).toFixed(2)} · 시야 {(stats?.visionPerMinuteDiff ?? 0).toFixed(2)}</p><p className="mt-1 text-slate-500">CC {(stats?.crowdControlPerMinuteDiff ?? 0).toFixed(2)} · 오브젝트 {(stats?.objectiveParticipationDiff ?? 0).toFixed(2)}</p></div>;
+                        return <div key={role} className="rounded-lg bg-[var(--surface-soft)] p-3 text-xs"><div className="flex justify-between"><p className="font-semibold text-[var(--body)]">{ROLE_LABEL[role]}</p><p className="font-bold">{Math.round((stats?.balanceSignal ?? 0.35) * 100)}점</p></div><p className="mt-2 text-[var(--muted)]">표본 {stats?.sampleCount ?? 0}경기 · 신뢰도 {Math.round((stats?.confidence ?? 0) * 100)}%</p><p className="mt-1 text-[var(--muted)]">15분 골드 {Math.round(stats?.goldDiff15 ?? 0)} · XP {Math.round(stats?.xpDiff15 ?? 0)} · CS {(stats?.csDiff15 ?? 0).toFixed(1)}</p><p className="mt-1 text-[var(--muted)]">피해효율 {(stats?.damagePerGoldDiff ?? 0).toFixed(2)} · 킬관여 {(stats?.killParticipationDiff ?? 0).toFixed(2)} · 시야 {(stats?.visionPerMinuteDiff ?? 0).toFixed(2)}</p><p className="mt-1 text-[var(--muted)]">CC {(stats?.crowdControlPerMinuteDiff ?? 0).toFixed(2)} · 오브젝트 {(stats?.objectiveParticipationDiff ?? 0).toFixed(2)}</p></div>;
                       })}
                     </div>
                     <div className="mt-4 flex flex-wrap gap-2">
-                      <button onClick={() => setForm({discordUserId: player.discordUserId, displayName: player.displayName, riotGameName: player.riotGameName, riotTagLine: player.riotTagLine, primaryRole: player.primaryRole, secondaryRole: player.secondaryRole})} className="rounded-lg border border-white/10 px-3 py-2 text-xs">수정</button>
-                      <button disabled={pendingAction !== null || inProgress} onClick={() => sync(player.discordUserId)} className="rounded-lg border border-cyan-400/20 px-3 py-2 text-xs text-cyan-200 disabled:opacity-40">{inProgress ? statusLabel[player.syncStatus] : "롤 계정 갱신"}</button>
-                      <button disabled={pendingAction !== null} onClick={() => remove(player.discordUserId)} className="rounded-lg border border-rose-400/20 px-3 py-2 text-xs text-rose-300 disabled:opacity-40">삭제</button>
+                      <button onClick={() => setForm({discordUserId: player.discordUserId, displayName: player.displayName, riotGameName: player.riotGameName, riotTagLine: player.riotTagLine, primaryRole: player.primaryRole, secondaryRole: player.secondaryRole})} className="min-h-11 rounded-lg border border-[var(--hairline)] bg-white px-3 text-xs font-semibold">수정</button>
+                      <button disabled={pendingAction !== null || inProgress} onClick={() => sync(player.discordUserId)} className="min-h-11 rounded-lg border border-[#f0afbf] bg-[var(--primary-soft)] px-3 text-xs font-semibold text-[var(--primary)] disabled:opacity-40">{inProgress ? statusLabel[player.syncStatus] : "롤 계정 갱신"}</button>
+                      <button disabled={pendingAction !== null} onClick={() => remove(player.discordUserId)} className="min-h-11 rounded-lg border border-[#f2b8aa] bg-[var(--error-soft)] px-3 text-xs font-semibold text-[var(--error)] disabled:opacity-40">삭제</button>
                     </div>
                   </div>
                 </details>
               );
             })}
-            {!players.length && <p className="py-12 text-center text-sm text-slate-500">등록된 선수가 없습니다.</p>}
+            {!players.length && <p className="py-12 text-center text-sm text-[var(--muted)]">등록된 선수가 없습니다.</p>}
           </div>
         </section>
       </div>
@@ -175,11 +175,11 @@ export default function PlayerManager({initialPlayers}: {initialPlayers: PlayerP
 }
 
 function Field({label, value, onChange, disabled}: {label: string; value: string; onChange: (value: string) => void; disabled?: boolean}) {
-  return <label className="block text-xs text-slate-400">{label}<input required disabled={disabled} value={value} onChange={(event) => onChange(event.target.value)} className="mt-1.5 w-full rounded-lg border border-white/10 bg-black/20 px-3 py-2.5 text-sm text-white outline-none focus:border-cyan-400/50 disabled:opacity-60" /></label>;
+  return <label className="block text-xs font-medium text-[var(--muted)]">{label}<input required disabled={disabled} value={value} onChange={(event) => onChange(event.target.value)} className="form-control text-sm" /></label>;
 }
 
 function RoleSelect({label, value, onChange}: {label: string; value: Role; onChange: (value: Role) => void}) {
-  return <label className="block text-xs text-slate-400">{label}<select value={value} onChange={(event) => onChange(event.target.value as Role)} className="mt-1.5 w-full rounded-lg border border-white/10 bg-[#101725] px-3 py-2.5 text-sm text-white">{ROLES.map((role) => <option key={role} value={role}>{ROLE_LABEL[role]}</option>)}</select></label>;
+  return <label className="block text-xs font-medium text-[var(--muted)]">{label}<select value={value} onChange={(event) => onChange(event.target.value as Role)} className="form-control text-sm">{ROLES.map((role) => <option key={role} value={role}>{ROLE_LABEL[role]}</option>)}</select></label>;
 }
 
 function overallScore(player: PlayerProfile) {

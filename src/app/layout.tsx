@@ -13,8 +13,8 @@ const geistMono = Geist_Mono({
 });
 
 export const metadata: Metadata = {
-  title: "비비 | 디스코드 봇",
-  description: "BIBI 봇은 디스코드 서버를 위한 다기능 봇입니다.",
+  title: "비비 | 일상과 LoL 내전을 돕는 Discord 봇",
+  description: "메뉴 추천부터 최근 전적 기반 LoL 내전 팀 편성까지, 친구들과 함께 쓰는 Discord 봇 비비입니다.",
 };
 
 export default function RootLayout({

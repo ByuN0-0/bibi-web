@@ -30,16 +30,16 @@ export default function LoginForm() {
 
   return (
     <form onSubmit={submit} className="space-y-5">
-      <label className="block text-sm text-slate-300">
+      <label className="block text-sm font-medium text-[var(--body)]">
         아이디
-        <input name="username" autoComplete="username" required className="mt-2 w-full rounded-xl border border-white/10 bg-black/25 px-4 py-3 text-white outline-none transition focus:border-cyan-400/70 focus:ring-2 focus:ring-cyan-400/10" />
+        <input name="username" autoComplete="username" required className="form-control" />
       </label>
-      <label className="block text-sm text-slate-300">
+      <label className="block text-sm font-medium text-[var(--body)]">
         비밀번호
-        <input name="password" type="password" autoComplete="current-password" required className="mt-2 w-full rounded-xl border border-white/10 bg-black/25 px-4 py-3 text-white outline-none transition focus:border-cyan-400/70 focus:ring-2 focus:ring-cyan-400/10" />
+        <input name="password" type="password" autoComplete="current-password" required className="form-control" />
       </label>
-      {error && <p role="alert" className="rounded-xl border border-rose-400/20 bg-rose-400/10 px-4 py-3 text-sm text-rose-200">{error}</p>}
-      <button disabled={pending} className="w-full rounded-xl bg-gradient-to-r from-cyan-400 to-blue-500 px-4 py-3 font-bold text-slate-950 transition hover:brightness-110 disabled:cursor-wait disabled:opacity-60">
+      {error && <p role="alert" className="rounded-xl border border-[#f2b8aa] bg-[var(--error-soft)] px-4 py-3 text-sm text-[var(--error)]">{error}</p>}
+      <button disabled={pending} className="primary-button w-full">
         {pending ? "확인 중…" : "관리 화면 열기"}
       </button>
     </form>

@@ -9,7 +9,7 @@ export default function LogoutButton() {
       await fetch("/api/lol-statics/auth/logout", {method: "POST"});
       router.replace("/lol-statics/login");
       router.refresh();
-    }} className="w-full rounded-xl border border-white/10 px-4 py-3 text-sm text-slate-400 transition hover:bg-white/5 hover:text-white">
+    }} className="flex min-h-12 w-full items-center rounded-xl border border-[var(--hairline)] bg-white px-4 text-sm font-medium text-[var(--muted)] hover:border-[var(--ink)] hover:text-[var(--ink)]">
       로그아웃
     </button>
   );

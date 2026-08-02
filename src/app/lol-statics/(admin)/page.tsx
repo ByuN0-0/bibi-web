@@ -9,9 +9,9 @@ export default async function DashboardPage() {
   return (
     <div className="mx-auto max-w-7xl">
       <div className="mb-8">
-        <p className="text-sm font-medium text-cyan-300">TEAM BALANCER</p>
-        <h1 className="mt-2 text-3xl font-bold tracking-tight">오늘의 내전 팀 편성</h1>
-        <p className="mt-2 text-sm text-slate-400">선수 10명을 고르면 최근 전적과 포지션 선호, 최근 같은 팀 기록을 함께 반영합니다.</p>
+        <p className="eyebrow">Team balancer</p>
+        <h1 className="mt-3 text-3xl font-bold tracking-[-0.03em]">오늘의 내전 팀 편성</h1>
+        <p className="mt-3 text-sm leading-6 text-[var(--muted)]">선수 10명을 고르면 최근 전적과 포지션 선호, 최근 같은 팀 기록을 함께 반영합니다.</p>
       </div>
       <section className="mb-8 grid gap-4 sm:grid-cols-2 xl:grid-cols-4">
         <StatusCard label="등록 선수" value={`${players.length}명`} detail={`동기화 완료 ${readyCount}명`} />
@@ -25,8 +25,8 @@ export default async function DashboardPage() {
 }
 
 function StatusCard({label, value, detail, tone}: {label: string; value: string; detail: string; tone?: "good" | "warn"}) {
-  const color = tone === "good" ? "text-emerald-300" : tone === "warn" ? "text-amber-300" : "text-white";
-  return <div className="rounded-2xl border border-white/10 bg-white/[0.035] p-5"><p className="text-xs text-slate-500">{label}</p><p className={`mt-2 text-2xl font-bold ${color}`}>{value}</p><p className="mt-2 text-xs text-slate-500">{detail}</p></div>;
+  const color = tone === "good" ? "text-[var(--success)]" : tone === "warn" ? "text-[var(--warning)]" : "text-[var(--ink)]";
+  return <div className="surface-card p-5"><p className="text-xs text-[var(--muted)]">{label}</p><p className={`mt-2 text-2xl font-bold ${color}`}>{value}</p><p className="mt-2 text-xs text-[var(--muted)]">{detail}</p></div>;
 }
 
 const formatDate = (time: number) => new Intl.DateTimeFormat("ko-KR", {month: "short", day: "numeric"}).format(time);

@@ -1,247 +1,199 @@
-// app/(marketing)/page.tsx
-"use client"; // 클라이언트 전용 컴포넌트로 지정
+import Image from "next/image";
+import Link from "next/link";
+
+const features = [
+  {
+    icon: "crossed-swords",
+    label: "LoL 내전",
+    title: "감이 아닌 기록으로 나누는 팀",
+    description: "최근 전적과 선호 포지션, 최근 같은 팀 기록을 함께 반영해 10명의 균형 잡힌 조합을 찾습니다.",
+    accent: "bg-[#fff0f3] text-[var(--primary)]",
+  },
+  {
+    icon: "bowl",
+    label: "메뉴 추천",
+    title: "오늘 뭐 먹지? 비비에게 물어보기",
+    description: "아침·점심·저녁 추천부터 한식, 중식, 일식, 양식 메뉴까지 가볍게 골라 줍니다.",
+    accent: "bg-[#fff7e8] text-[#9a6500]",
+  },
+  {
+    icon: "sparkle",
+    label: "서버 도구",
+    title: "자주 필요한 일은 짧은 명령으로",
+    description: "핑 확인, 무작위 팀 나누기, 로또 번호 추천과 채팅 정리를 슬래시 명령으로 처리합니다.",
+    accent: "bg-[#eef8ff] text-[#176b9d]",
+  },
+] as const;
+
+const commandGroups = [
+  {
+    title: "LoL 내전",
+    description: "Riot 계정과 최근 전적을 바탕으로 내전 준비부터 확정까지",
+    commands: [
+      {name: "/롤계정 등록", detail: "Riot ID와 주·부 포지션 등록 또는 수정"},
+      {name: "/롤계정 조회", detail: "내 계정과 동기화 상태 확인"},
+      {name: "/롤계정 삭제", detail: "등록 계정과 관련 내전 기록 삭제"},
+      {name: "/롤전적 조회", detail: "랭크와 포지션별 최근 전적 요약"},
+      {name: "/롤전적 갱신", detail: "최근 전적 갱신 요청 · 15분 간격"},
+      {name: "/내전 만들기", detail: "참가자 10명 선택 후 생성·재편성·확정"},
+    ],
+  },
+  {
+    title: "생활",
+    description: "고민되는 메뉴와 소소한 선택을 빠르게 해결",
+    commands: [
+      {name: "/아메추 · /점메추 · /저메추", detail: "시간대와 계절을 반영한 음식 추천"},
+      {name: "/한식 · /중식 · /일식 · /양식", detail: "카테고리별 메뉴 목록과 오늘의 추천"},
+      {name: "/lotto", detail: "1부터 45까지 중 로또 번호 6개 추천"},
+    ],
+  },
+  {
+    title: "서버 도구",
+    description: "친구들과 쓰기 좋은 작고 실용적인 명령",
+    commands: [
+      {name: "/ping", detail: "비비의 응답 속도 확인"},
+      {name: "/team", detail: "짝수 인원을 두 팀으로 무작위 편성"},
+      {name: "/clear", detail: "채팅 최대 20개 삭제 · 봇의 메시지 관리 권한 필요"},
+    ],
+  },
+] as const;
 
 export default function Home() {
   return (
-      <>
-        {/* 메인 콘텐츠 */}
-        <main className="flex-grow pt-16">
-          {/* 히어로 섹션 */}
-          <div
-              className="relative bg-gray-800"
-              style={{
-                background: "linear-gradient(-45deg, #ee7752, #e73c7e, #23a6d5, #23d5ab)",
-                backgroundSize: "400% 400%",
-                animation: "gradient 15s ease infinite",
-                position: "relative",
-                overflow: "hidden",
-              }}
-          >
-            <style jsx>{`
-            @keyframes gradient {
-              0% {
-                background-position: 0% 50%;
-              }
-              50% {
-                background-position: 100% 50%;
-              }
-              100% {
-                background-position: 0% 50%;
-              }
-            }
-          `}</style>
-            <div className="max-w-8xl mx-auto px-4 sm:px-6 lg:px-8 py-24">
-              <div className="lg:grid lg:grid-cols-12 lg:gap-8">
-                <div className="sm:text-center md:max-w-2xl md:mx-auto lg:col-span-6 lg:text-left">
-                  <h1 className="text-4xl tracking-tight font-extrabold sm:text-5xl md:text-6xl">
-                    <span className="block">당신의 서버를 위한</span>
-                    <span className="block text-custom">최고의 디스코드 봇</span>
-                  </h1>
-                  <p className="mt-3 text-base text-gray-300 sm:mt-5 sm:text-xl lg:text-lg xl:text-xl">
-                    다양한 서비스로 한 번에 해결하세요.
-                    안정적인 서비스를 제공합니다.
-                  </p>
-                  <div className="mt-8 sm:max-w-lg sm:mx-auto sm:text-center lg:text-left">
-                    <button className="!rounded-3xl bg-custom hover:bg-blue-600 px-8 py-3 text-base font-medium inline-flex items-center">
-                      <i className="fas fa-robot mr-2"></i>
-                      지금 시작하기
-                    </button>
+    <main className="pt-[72px]">
+      <section className="overflow-hidden border-b border-[var(--hairline-soft)]">
+        <div className="page-shell grid min-h-[650px] items-center gap-12 py-16 lg:grid-cols-[1.05fr_0.95fr] lg:py-20">
+          <div className="max-w-2xl">
+            <p className="eyebrow">Discord bot for friends</p>
+            <h1 className="mt-5 text-[clamp(40px,6vw,68px)] font-bold leading-[1.08] tracking-[-0.045em] text-[var(--ink)]">
+              친구들과 더 가볍게,<br />
+              게임은 <span className="text-[var(--primary)]">더 공정하게.</span>
+            </h1>
+            <p className="mt-7 max-w-xl text-base leading-7 text-[var(--body)] sm:text-lg sm:leading-8">
+              비비는 메뉴 추천 같은 일상의 작은 고민부터 최근 전적을 반영한 LoL 내전 팀 편성까지 함께하는 Discord 봇입니다.
+            </p>
+            <div className="mt-9 flex flex-col gap-3 sm:flex-row">
+              <Link href="/lol-member" className="primary-button px-6">
+                롤 내전 팀 편성
+                <ArrowIcon />
+              </Link>
+              <Link href="#commands" className="secondary-button px-6">
+                명령어 둘러보기
+              </Link>
+            </div>
+            <div className="mt-9 flex flex-wrap gap-x-6 gap-y-3 text-sm text-[var(--muted)]">
+              <TrustItem>로그인 없이 공개 편성</TrustItem>
+              <TrustItem>최근 전적 반영</TrustItem>
+              <TrustItem>모바일 지원</TrustItem>
+            </div>
+          </div>
+
+          <div className="relative mx-auto w-full max-w-[500px] lg:mr-0">
+            <div className="absolute -left-8 -top-8 h-32 w-32 rounded-full bg-[var(--primary-soft)]" />
+            <div className="absolute -bottom-10 -right-10 h-44 w-44 rounded-full bg-[#e8f7ff]" />
+            <div className="relative overflow-hidden rounded-[32px] border border-[var(--hairline-soft)] bg-[#dff4ff] p-6 shadow-[var(--shadow-float)] sm:p-9">
+              <Image
+                src="/images/bibi-logo.png"
+                alt="하늘색 배경에서 웃고 있는 비비 캐릭터"
+                width={658}
+                height={616}
+                priority
+                sizes="(max-width: 1024px) 90vw, 500px"
+                className="h-auto w-full rounded-[24px]"
+              />
+              <div className="absolute bottom-10 left-10 rounded-full bg-white px-4 py-2 text-sm font-semibold shadow-[var(--shadow-float)] sm:bottom-14 sm:left-14">
+                오늘도 준비 완료 <span aria-hidden="true">✦</span>
+              </div>
+            </div>
+          </div>
+        </div>
+      </section>
+
+      <section id="features" className="page-shell py-16 sm:py-20">
+        <div className="max-w-2xl">
+          <p className="eyebrow">What BIBI does</p>
+          <h2 className="section-title mt-3">친구들이 자주 하는 고민을 한곳에서</h2>
+          <p className="mt-4 text-base leading-7 text-[var(--muted)]">과장된 기능 소개 대신 지금 v1에서 실제로 사용할 수 있는 것만 담았습니다.</p>
+        </div>
+        <div className="mt-9 grid gap-4 md:grid-cols-3">
+          {features.map((feature) => (
+            <article key={feature.label} className="surface-card p-6 sm:p-7">
+              <div className={`grid h-12 w-12 place-items-center rounded-full ${feature.accent}`}>
+                <FeatureIcon name={feature.icon} />
+              </div>
+              <p className="mt-6 text-sm font-semibold text-[var(--primary)]">{feature.label}</p>
+              <h3 className="mt-2 text-xl font-semibold leading-7 tracking-[-0.02em]">{feature.title}</h3>
+              <p className="mt-3 text-sm leading-6 text-[var(--muted)]">{feature.description}</p>
+            </article>
+          ))}
+        </div>
+      </section>
+
+      <section className="bg-[var(--surface-soft)] py-16 sm:py-20">
+        <div className="page-shell grid items-center gap-10 lg:grid-cols-[0.85fr_1.15fr]">
+          <div>
+            <p className="eyebrow">Balanced teams</p>
+            <h2 className="section-title mt-3">10명을 고르면 비비가 균형을 찾습니다</h2>
+            <p className="mt-4 max-w-lg text-base leading-7 text-[var(--muted)]">
+              단순 티어 합산이 아니라 최근 경기의 포지션별 지표와 선호 포지션, 최근 같은 팀 조합을 함께 살펴봅니다.
+            </p>
+            <Link href="/lol-member" className="primary-button mt-7 px-6">웹에서 바로 편성하기 <ArrowIcon /></Link>
+          </div>
+          <ol className="grid gap-3 sm:grid-cols-3">
+            <Step number="1" title="선수 선택">동기화가 완료된 선수 중 정확히 10명을 선택합니다.</Step>
+            <Step number="2" title="팀 생성">블루와 레드 팀의 포지션까지 함께 계산합니다.</Step>
+            <Step number="3" title="다시 편성">원하면 방금 조합을 제외하고 새 조합을 찾습니다.</Step>
+          </ol>
+        </div>
+      </section>
+
+      <section id="commands" className="page-shell py-16 sm:py-20">
+        <div className="max-w-2xl">
+          <p className="eyebrow">Slash commands</p>
+          <h2 className="section-title mt-3">지금 비비에게 말할 수 있는 것</h2>
+          <p className="mt-4 text-base leading-7 text-[var(--muted)]">Discord 입력창에 슬래시 명령을 입력해 바로 시작할 수 있습니다.</p>
+        </div>
+        <div className="mt-9 grid gap-5 lg:grid-cols-3">
+          {commandGroups.map((group) => (
+            <article key={group.title} className="surface-card overflow-hidden">
+              <header className="border-b border-[var(--hairline-soft)] bg-[var(--surface-soft)] p-6">
+                <h3 className="text-lg font-semibold">{group.title}</h3>
+                <p className="mt-2 text-sm leading-6 text-[var(--muted)]">{group.description}</p>
+              </header>
+              <dl className="divide-y divide-[var(--hairline-soft)] px-6">
+                {group.commands.map((command) => (
+                  <div key={command.name} className="py-4">
+                    <dt><code className="rounded-md bg-[var(--primary-soft)] px-2 py-1 font-mono text-xs font-semibold text-[var(--primary)]">{command.name}</code></dt>
+                    <dd className="mt-2 text-sm leading-6 text-[var(--muted)]">{command.detail}</dd>
                   </div>
-                </div>
-                <div className="mt-12 relative sm:max-w-lg rounded-2xl sm:mx-auto lg:mt-0 lg:max-w-none lg:mx-0 lg:col-span-6 lg:flex lg:items-center">
-                  <img
-                      src="/images/bibi-logo.png"
-                      alt="Bot Illustration"
-                      className="w-full rounded-3xl"
-                  />
-                </div>
-              </div>
-            </div>
-          </div>
-
-          {/* 명령어 및 기타 섹션 */}
-          <div className="max-w-8xl mx-auto px-4 sm:px-6 lg:px-8 py-16 relative z-10 bg-gray-900/95 mt-[-4rem] rounded-2xl backdrop-blur-lg shadow-2xl mx-4 lg:mx-8">
-            <div className="lg:grid lg:grid-cols-12 lg:gap-8">
-              <div className="lg:col-span-3">
-                <nav className="sticky top-20 space-y-4 bg-gray-800/90 p-6 rounded-lg backdrop-blur-lg shadow-xl">
-                  <div className="text-lg font-medium mb-4">카테고리</div>
-                  <a href="#admin" className="block py-2 text-gray-300 hover:text-white">
-                    관리자 명령어
-                  </a>
-                  <a href="#daily" className="block py-2 text-gray-300 hover:text-white">
-                    일상 명령어
-                  </a>
-                  <a href="#music" className="block py-2 text-gray-300 hover:text-white">
-                    음악 명령어
-                  </a>
-                </nav>
-              </div>
-              <div className="mt-12 lg:mt-0 lg:col-span-9">
-                <div className="space-y-16">
-                  <section id="admin">
-                    <h2 className="text-2xl font-bold mb-8">관리자 명령어</h2>
-                    <div className="bg-gray-800/90 rounded-lg overflow-hidden backdrop-blur-lg shadow-xl">
-                      <table className="min-w-full divide-y divide-gray-700">
-                        <thead className="bg-gray-700">
-                        <tr>
-                          <th className="px-6 py-3 text-left text-xs font-medium text-gray-300 uppercase tracking-wider">
-                            명령어
-                          </th>
-                          <th className="px-6 py-3 text-left text-xs font-medium text-gray-300 uppercase tracking-wider">
-                            설명
-                          </th>
-                          <th className="px-6 py-3 text-left text-xs font-medium text-gray-300 uppercase tracking-wider">
-                            사용 예시
-                          </th>
-                          <th className="px-6 py-3 text-left text-xs font-medium text-gray-300 uppercase tracking-wider">
-                            필요 권한
-                          </th>
-                        </tr>
-                        </thead>
-                        <tbody className="divide-y divide-gray-700">
-                        <tr>
-                          <td className="px-6 py-4 whitespace-nowrap text-sm font-medium">
-                            /clear
-                          </td>
-                          <td className="px-6 py-4 text-sm text-gray-300">
-                            채팅을 지워줍니다.
-                          </td>
-                          <td className="px-6 py-4 text-sm text-gray-300">
-                            /clear 10
-                          </td>
-                          <td className="px-6 py-4 text-sm text-gray-300">
-                            관리자
-                          </td>
-                        </tr>
-                        </tbody>
-                      </table>
-                    </div>
-                  </section>
-                  <section id="daily">
-                    <h2 className={"text-2xl font-bold mb-8"}>일상 명령어</h2>
-                    <div className="bg-gray-800/90 rounded-lg overflow-hidden backdrop-blur-lg shadow-xl">
-                        <table className="min-w-full divide-y divide-gray-700">
-                            <thead className={"bg-gray-700"}>
-                            <tr>
-                                <th className={"px-6 py-3 text-left text-xs font-medium text-gray-300 uppercase tracking-wider"}>
-                                    명령어
-                                </th>
-                                <th className={"px-6 py-3 text-left text-xs font-medium text-gray-300 uppercase tracking-wider"}>
-                                    설명
-                                </th>
-                                <th className={"px-6 py-3 text-left text-xs font-medium text-gray-300 uppercase tracking-wider"}>
-                                    사용 예시
-                                </th>
-                                <th className={"px-6 py-3 text-left text-xs font-medium text-gray-300 uppercase tracking-wider"}>
-                                    필요 권한
-                                </th>
-                            </tr>
-                            </thead>
-                          <tbody className={"divide-y divide-gray-700"}>
-                          <tr>
-                            <td className={"px-6 py-4 whitespace-nowrap text-sm font-medium"}>
-                              /help
-                            </td>
-                            <td className={"px-6 py-4 text-sm text-gray-300"}>
-                              도움말을 표시합니다.
-                            </td>
-                            <td className={"px-6 py-4 text-sm text-gray-300"}>
-                              /help
-                            </td>
-                            <td className={"px-6 py-4 text-sm text-gray-300"}>
-                              없음
-                            </td>
-                          </tr>
-                          <tr>
-                            <td className={"px-6 py-4 whitespace-nowrap text-sm font-medium"}>
-                              /저메추, /점메추
-                            </td>
-                            <td className={"px-6 py-4 text-sm text-gray-300"}>
-                              식사 메뉴를 추천합니다.
-                            </td>
-                            <td className={"px-6 py-4 text-sm text-gray-300"}>
-                              /저메추, /점메추
-                            </td>
-                            <td className={"px-6 py-4 text-sm text-gray-300"}>
-                              없음
-                            </td>
-                          </tr>
-                          <tr>
-                            <td className={"px-6 py-4 whitespace-nowrap text-sm font-medium"}>
-                              /team
-                            </td>
-                            <td className={"px-6 py-4 text-sm text-gray-300"}>
-                              팀을 2개로 나누어줍니다. (짝수여야 합니다.)
-                            </td>
-                            <td className={"px-6 py-4 text-sm text-gray-300"}>
-                              /team 유저1 유저2 유저3 유저4
-                            </td>
-                            <td className={"px-6 py-4 text-sm text-gray-300"}>
-                              없음
-                            </td>
-                          </tr>
-                          </tbody>
-                        </table>
-                    </div>
-
-
-                  </section>
-
-                  <section id="music">
-                    <h2 className="text-2xl font-bold mb-8">음악 명령어(추가예정)</h2>
-                    <div className="bg-gray-800/90 rounded-lg overflow-hidden backdrop-blur-lg shadow-xl">
-                      <table className="min-w-full divide-y divide-gray-700">
-                        <thead className="bg-gray-700">
-                        <tr>
-                          <th className="px-6 py-3 text-left text-xs font-medium text-gray-300 uppercase tracking-wider">
-                            명령어
-                          </th>
-                          <th className="px-6 py-3 text-left text-xs font-medium text-gray-300 uppercase tracking-wider">
-                            설명
-                          </th>
-                          <th className="px-6 py-3 text-left text-xs font-medium text-gray-300 uppercase tracking-wider">
-                            사용 예시
-                          </th>
-                          <th className="px-6 py-3 text-left text-xs font-medium text-gray-300 uppercase tracking-wider">
-                            필요 권한
-                          </th>
-                        </tr>
-                        </thead>
-                        <tbody className="divide-y divide-gray-700">
-                        <tr>
-                          <td className="px-6 py-4 whitespace-nowrap text-sm font-medium">
-                            /재생
-                          </td>
-                          <td className="px-6 py-4 text-sm text-gray-300">
-                            음악을 재생합니다
-                          </td>
-                          <td className="px-6 py-4 text-sm text-gray-300">
-                            /재생 노래제목
-                          </td>
-                          <td className="px-6 py-4 text-sm text-gray-300">없음</td>
-                        </tr>
-                        <tr className="bg-gray-800">
-                          <td className="px-6 py-4 whitespace-nowrap text-sm font-medium">
-                            /정지
-                          </td>
-                          <td className="px-6 py-4 text-sm text-gray-300">
-                            음악을 정지합니다
-                          </td>
-                          <td className="px-6 py-4 text-sm text-gray-300">/정지</td>
-                          <td className="px-6 py-4 text-sm text-gray-300">없음</td>
-                        </tr>
-                        </tbody>
-                      </table>
-                    </div>
-                  </section>
-                </div>
-              </div>
-            </div>
-          </div>
-        </main>
-
-        {/* 푸터 영역 */}
-
-      </>
+                ))}
+              </dl>
+            </article>
+          ))}
+        </div>
+      </section>
+    </main>
   );
+}
+
+function TrustItem({children}: {children: React.ReactNode}) {
+  return <span className="inline-flex items-center gap-2"><span className="grid h-5 w-5 place-items-center rounded-full bg-[var(--primary-soft)] text-[var(--primary)]"><CheckIcon /></span>{children}</span>;
+}
+
+function Step({number, title, children}: {number: string; title: string; children: React.ReactNode}) {
+  return <li className="surface-card p-5"><span className="grid h-8 w-8 place-items-center rounded-full bg-[var(--primary)] text-sm font-bold text-white">{number}</span><h3 className="mt-5 font-semibold">{title}</h3><p className="mt-2 text-sm leading-6 text-[var(--muted)]">{children}</p></li>;
+}
+
+function FeatureIcon({name}: {name: typeof features[number]["icon"]}) {
+  if (name === "crossed-swords") return <svg aria-hidden="true" viewBox="0 0 24 24" className="h-6 w-6 fill-none stroke-current" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round"><path d="m5 4 15 15M14 4h6v6M10 14l-6 6M4 14l6 6M15 9l5-5" /></svg>;
+  if (name === "bowl") return <svg aria-hidden="true" viewBox="0 0 24 24" className="h-6 w-6 fill-none stroke-current" strokeWidth="1.8" strokeLinecap="round"><path d="M4 11h16a8 8 0 0 1-16 0ZM8 20h8M8 7c0-1 1-1.5 1-2.5S8 3 8 2M13 7c0-1 1-1.5 1-2.5S13 3 13 2" /></svg>;
+  return <svg aria-hidden="true" viewBox="0 0 24 24" className="h-6 w-6 fill-none stroke-current" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round"><path d="m12 3 1.3 4.2L17.5 9l-4.2 1.8L12 15l-1.3-4.2L6.5 9l4.2-1.8L12 3ZM19 15l.7 2.3L22 18l-2.3.7L19 21l-.7-2.3L16 18l2.3-.7L19 15ZM5 14l.8 2.2L8 17l-2.2.8L5 20l-.8-2.2L2 17l2.2-.8L5 14Z" /></svg>;
+}
+
+function ArrowIcon() {
+  return <svg aria-hidden="true" viewBox="0 0 20 20" className="h-4 w-4 fill-none stroke-current" strokeWidth="1.8"><path d="M4 10h12M11 5l5 5-5 5" /></svg>;
+}
+
+function CheckIcon() {
+  return <svg aria-hidden="true" viewBox="0 0 16 16" className="h-3 w-3 fill-none stroke-current" strokeWidth="2"><path d="m3 8 3 3 7-7" /></svg>;
 }

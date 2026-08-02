@@ -6,23 +6,183 @@
 }
 
 :root {
-  --background: #171717;
-  --foreground: #ffffff;
+  --canvas: #ffffff;
+  --surface-soft: #f7f7f7;
+  --surface-strong: #f1f1f1;
+  --ink: #222222;
+  --body: #3f3f3f;
+  --muted: #6a6a6a;
+  --muted-soft: #929292;
+  --hairline: #dddddd;
+  --hairline-soft: #ebebeb;
+  --primary: #df2856;
+  --primary-active: #c91d49;
+  --primary-soft: #fff0f3;
+  --primary-disabled: #f7b9c7;
+  --success: #147a55;
+  --success-soft: #edf8f3;
+  --warning: #946200;
+  --warning-soft: #fff8e6;
+  --error: #c13515;
+  --error-soft: #fff3ef;
+  --shadow-float: rgba(0, 0, 0, 0.02) 0 0 0 1px,
+    rgba(0, 0, 0, 0.04) 0 2px 6px,
+    rgba(0, 0, 0, 0.1) 0 4px 8px;
 }
 
-@media (prefers-color-scheme: dark) {
-  :root {
-    --foreground: #0a0a0a;
-    --background: #ededed;
-  }
-}
-
-body {
-  color: var(--foreground);
-  background: var(--background);
-  font-family: Arial, Helvetica, sans-serif;
+* {
+  box-sizing: border-box;
 }
 
 html {
   scroll-behavior: smooth;
+  scroll-padding-top: 88px;
+}
+
+body {
+  min-width: 320px;
+  margin: 0;
+  color: var(--ink);
+  background: var(--canvas);
+  font-family: var(--font-geist-sans), "Apple SD Gothic Neo", "Noto Sans KR",
+    -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+}
+
+button,
+input,
+select {
+  font: inherit;
+}
+
+button,
+a,
+summary {
+  -webkit-tap-highlight-color: transparent;
+}
+
+a,
+button {
+  transition: color 160ms ease, background-color 160ms ease,
+    border-color 160ms ease, box-shadow 160ms ease;
+}
+
+:focus-visible {
+  outline: 3px solid rgba(223, 40, 86, 0.28);
+  outline-offset: 3px;
+}
+
+::selection {
+  color: var(--ink);
+  background: #ffd8e1;
+}
+
+.page-shell {
+  width: min(100% - 40px, 1280px);
+  margin-inline: auto;
+}
+
+.surface-card {
+  border: 1px solid var(--hairline-soft);
+  border-radius: 16px;
+  background: var(--canvas);
+}
+
+.primary-button,
+.secondary-button {
+  display: inline-flex;
+  min-height: 48px;
+  align-items: center;
+  justify-content: center;
+  gap: 8px;
+  border-radius: 10px;
+  padding: 0 20px;
+  font-size: 14px;
+  font-weight: 650;
+  line-height: 1;
+}
+
+.primary-button {
+  border: 1px solid var(--primary);
+  color: #ffffff;
+  background: var(--primary);
+}
+
+.primary-button:hover {
+  border-color: var(--primary-active);
+  background: var(--primary-active);
+}
+
+.secondary-button {
+  border: 1px solid var(--ink);
+  color: var(--ink);
+  background: var(--canvas);
+}
+
+.secondary-button:hover {
+  background: var(--surface-soft);
+}
+
+.primary-button:disabled,
+.secondary-button:disabled {
+  cursor: not-allowed;
+  opacity: 0.45;
+}
+
+.eyebrow {
+  color: var(--primary);
+  font-size: 12px;
+  font-weight: 750;
+  letter-spacing: 0.12em;
+  text-transform: uppercase;
+}
+
+.section-title {
+  color: var(--ink);
+  font-size: clamp(24px, 3vw, 32px);
+  font-weight: 700;
+  line-height: 1.25;
+  letter-spacing: -0.025em;
+}
+
+.form-control {
+  width: 100%;
+  min-height: 48px;
+  margin-top: 6px;
+  border: 1px solid var(--hairline);
+  border-radius: 10px;
+  padding: 11px 12px;
+  color: var(--ink);
+  background: var(--canvas);
+  outline: none;
+}
+
+.form-control:focus {
+  border: 2px solid var(--ink);
+  padding: 10px 11px;
+}
+
+.form-control:disabled {
+  color: var(--muted-soft);
+  background: var(--surface-soft);
+}
+
+@media (max-width: 743px) {
+  .page-shell {
+    width: min(100% - 32px, 1280px);
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  html {
+    scroll-behavior: auto;
+  }
+
+  *,
+  *::before,
+  *::after {
+    scroll-behavior: auto !important;
+    transition-duration: 0.01ms !important;
+    animation-duration: 0.01ms !important;
+    animation-iteration-count: 1 !important;
+  }
 }
