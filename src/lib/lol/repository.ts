@@ -2,7 +2,9 @@ import "server-only";
 import {soda, type SodaDocument} from "@/lib/soda";
 import type {
   MatchResult,
+  InhouseRatingSnapshot,
   PlayerProfile,
+  RiotAccountProfile,
   SystemStatus,
   TeamDraft,
   TeamSession,
@@ -15,9 +17,11 @@ import {
 
 export const COLLECTIONS = {
   players: "bibi_lol_players",
+  accounts: "bibi_lol_player_accounts",
   drafts: "bibi_lol_team_drafts",
   sessions: "bibi_lol_team_sessions",
   matchResults: "bibi_lol_match_results",
+  ratings: "bibi_lol_inhouse_ratings",
   status: "bibi_lol_system_status",
   loginAttempts: "bibi_web_login_attempts",
 } as const;
@@ -25,6 +29,12 @@ export const COLLECTIONS = {
 export class PlayerPuuidConflictError extends Error {
   constructor() {
     super("이미 다른 Discord 계정에 등록된 Riot 계정입니다.");
+  }
+}
+
+export class PlayerAccountLimitError extends Error {
+  constructor() {
+    super("Riot 계정은 주계정과 부계정 각 1개까지만 등록할 수 있습니다.");
   }
 }
 
@@ -79,6 +89,155 @@ export async function findPlayer(discordUserId: string) {
 
 export async function savePlayer(profile: PlayerProfile) {
   await upsert(COLLECTIONS.players, {discordUserId: profile.discordUserId}, profile);
+}
+
+const unranked = () => ({tier: "UNRANKED", division: "", leaguePoints: 0, wins: 0, losses: 0});
+
+export async function listPlayerAccounts(discordUserId?: string): Promise<RiotAccountProfile[]> {
+  await ensureCollection(COLLECTIONS.accounts);
+  const documents = discordUserId
+    ? await soda.query<RiotAccountProfile>(COLLECTIONS.accounts, {discordUserId})
+    : await soda.list<RiotAccountProfile>(COLLECTIONS.accounts);
+  return documents.map((document) => document.value).sort((left, right) =>
+    Number(right.isPrimary) - Number(left.isPrimary) || left.createdAt - right.createdAt);
+}
+
+export async function ensurePlayerAccounts(player: PlayerProfile): Promise<RiotAccountProfile[]> {
+  const accounts = await listPlayerAccounts(player.discordUserId);
+  if (accounts.length) return accounts;
+  const now = Date.now();
+  const account: RiotAccountProfile = {
+    schemaVersion: 1,
+    accountId: crypto.randomUUID(),
+    discordUserId: player.discordUserId,
+    isPrimary: true,
+    riotGameName: player.riotGameName,
+    riotTagLine: player.riotTagLine,
+    puuid: player.puuid,
+    soloRank: player.soloRank ?? unranked(),
+    flexRank: player.flexRank ?? unranked(),
+    recentRoleMatches: [],
+    latestScannedMatchId: null,
+    syncErrorCode: player.syncErrorCode,
+    revision: 1,
+    createdAt: player.createdAt || now,
+    updatedAt: now,
+  };
+  await soda.insert(COLLECTIONS.accounts, account);
+  return [account];
+}
+
+export async function findPlayerAccount(accountId: string) {
+  await ensureCollection(COLLECTIONS.accounts);
+  return findOne<RiotAccountProfile>(COLLECTIONS.accounts, {accountId});
+}
+
+export async function createPlayerAccount(
+  discordUserId: string,
+  riotGameName: string,
+  riotTagLine: string,
+): Promise<RiotAccountProfile> {
+  const playerDocument = await findPlayer(discordUserId);
+  if (!playerDocument) throw new Error("PLAYER_NOT_FOUND");
+  const accounts = await ensurePlayerAccounts(playerDocument.value);
+  if (accounts.length >= 2) throw new PlayerAccountLimitError();
+  const duplicateIdentity = (await listPlayerAccounts()).some((account) =>
+    account.riotGameName.toLocaleLowerCase() === riotGameName.toLocaleLowerCase()
+      && account.riotTagLine.toLocaleLowerCase() === riotTagLine.toLocaleLowerCase());
+  if (duplicateIdentity) throw new PlayerPuuidConflictError();
+  const now = Date.now();
+  const account: RiotAccountProfile = {
+    schemaVersion: 1,
+    accountId: crypto.randomUUID(),
+    discordUserId,
+    isPrimary: false,
+    riotGameName,
+    riotTagLine,
+    puuid: null,
+    soloRank: unranked(),
+    flexRank: unranked(),
+    recentRoleMatches: [],
+    latestScannedMatchId: null,
+    syncErrorCode: null,
+    revision: 1,
+    createdAt: now,
+    updatedAt: now,
+  };
+  await soda.insert(COLLECTIONS.accounts, account);
+  await savePlayer({...playerDocument.value, syncStatus: "REQUESTED", syncRequestedAt: now,
+    revision: playerDocument.value.revision + 1, updatedAt: now});
+  return account;
+}
+
+export async function setPrimaryPlayerAccount(discordUserId: string, accountId: string) {
+  const accounts = await listPlayerAccounts(discordUserId);
+  if (!accounts.some((account) => account.accountId === accountId)) throw new Error("ACCOUNT_NOT_FOUND");
+  await Promise.all(accounts.map(async (account) => {
+    const document = await findPlayerAccount(account.accountId);
+    if (!document || account.isPrimary === (account.accountId === accountId)) return;
+    await soda.replace(COLLECTIONS.accounts, document, {
+      ...account, isPrimary: account.accountId === accountId, revision: account.revision + 1, updatedAt: Date.now(),
+    });
+  }));
+  const primary = accounts.find((account) => account.accountId === accountId)!;
+  const player = await findPlayer(discordUserId);
+  if (player) await savePlayer({...player.value, riotGameName: primary.riotGameName,
+    riotTagLine: primary.riotTagLine, puuid: primary.puuid, revision: player.value.revision + 1, updatedAt: Date.now()});
+}
+
+export async function updatePrimaryPlayerAccount(
+  player: PlayerProfile,
+  riotGameName: string,
+  riotTagLine: string,
+) {
+  const accounts = await ensurePlayerAccounts(player);
+  const primary = accounts.find((account) => account.isPrimary) ?? accounts[0];
+  const document = await findPlayerAccount(primary.accountId);
+  if (!document) return;
+  const identityChanged = primary.riotGameName !== riotGameName || primary.riotTagLine !== riotTagLine;
+  await soda.replace(COLLECTIONS.accounts, document, {
+    ...primary,
+    riotGameName,
+    riotTagLine,
+    puuid: identityChanged ? null : primary.puuid,
+    soloRank: identityChanged ? unranked() : primary.soloRank,
+    flexRank: identityChanged ? unranked() : primary.flexRank,
+    recentRoleMatches: identityChanged ? [] : primary.recentRoleMatches,
+    latestScannedMatchId: identityChanged ? null : primary.latestScannedMatchId ?? null,
+    syncErrorCode: null,
+    revision: primary.revision + 1,
+    updatedAt: Date.now(),
+  });
+}
+
+export async function deletePlayerAccount(discordUserId: string, accountId: string) {
+  const accounts = await listPlayerAccounts(discordUserId);
+  if (accounts.length <= 1) throw new Error("LAST_ACCOUNT");
+  const target = accounts.find((account) => account.accountId === accountId);
+  const document = target ? await findPlayerAccount(accountId) : null;
+  if (!target || !document) throw new Error("ACCOUNT_NOT_FOUND");
+  await soda.delete(COLLECTIONS.accounts, document);
+  if (target.isPrimary) await setPrimaryPlayerAccount(discordUserId, accounts.find((account) => account.accountId !== accountId)!.accountId);
+  const player = await findPlayer(discordUserId);
+  if (player) await savePlayer({...player.value, syncStatus: "REQUESTED", syncRequestedAt: Date.now(),
+    revision: player.value.revision + 1, updatedAt: Date.now()});
+}
+
+export async function requestPlayerSync(discordUserId: string, now = Date.now()): Promise<SyncRequestResult> {
+  for (let attempt = 0; attempt < 3; attempt += 1) {
+    const document = await findPlayer(discordUserId);
+    if (!document) return {discordUserId, status: "NOT_FOUND"};
+    const availability = syncRequestAvailability(document.value, now);
+    if (availability.status !== "ALLOWED") return {discordUserId, ...availability};
+    try {
+      await soda.replace(COLLECTIONS.players, document, {...document.value, syncStatus: "REQUESTED",
+        syncRequestedAt: now, syncErrorCode: null, revision: document.value.revision + 1, updatedAt: now});
+      return {discordUserId, status: "REQUESTED"} as SyncRequestResult;
+    } catch (error) {
+      if (!(error instanceof Error) || error.message !== "SODA_CONFLICT" || attempt === 2) throw error;
+    }
+  }
+  return {discordUserId, status: "CONFLICT"};
 }
 
 export async function claimPlayerWebSync(
@@ -164,6 +323,9 @@ export async function failPlayerWebSync(
 export async function deletePlayer(discordUserId: string) {
   const player = await findPlayer(discordUserId);
   if (player) await soda.delete(COLLECTIONS.players, player);
+  await ensureCollection(COLLECTIONS.accounts);
+  const accounts = await soda.query<RiotAccountProfile>(COLLECTIONS.accounts, {discordUserId});
+  await Promise.all(accounts.map((account) => soda.delete(COLLECTIONS.accounts, account)));
   await Promise.all([
     ensureCollection(COLLECTIONS.sessions),
     ensureCollection(COLLECTIONS.drafts),
@@ -231,6 +393,15 @@ export async function replaceMatchResult(
 ) {
   await ensureCollection(COLLECTIONS.matchResults);
   await soda.replace(COLLECTIONS.matchResults, document, result);
+}
+
+export async function getInhouseRatingSnapshot(): Promise<InhouseRatingSnapshot | null> {
+  await ensureCollection(COLLECTIONS.ratings);
+  return (await findOne<InhouseRatingSnapshot>(COLLECTIONS.ratings, {snapshotId: "current"}))?.value ?? null;
+}
+
+export async function saveInhouseRatingSnapshot(snapshot: InhouseRatingSnapshot) {
+  await upsert(COLLECTIONS.ratings, {snapshotId: "current"}, snapshot);
 }
 
 export async function findDraft(draftId: string) {

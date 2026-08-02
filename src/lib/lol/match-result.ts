@@ -7,6 +7,7 @@ import type {
   MatchResultTeamStats,
   MatchTeam,
   PlayerProfile,
+  RiotAccountProfile,
 } from "@/lib/lol/types";
 import {MATCH_TEAMS} from "@/lib/lol/types";
 
@@ -81,8 +82,9 @@ export function parseMatchResultInput(input: unknown): ParsedMatchResultInput {
 export function prepareMatchResult(
   input: ParsedMatchResultInput,
   players: PlayerProfile[],
+  accounts: RiotAccountProfile[] = [],
 ): PreparedMatchResult {
-  const participants = resolveParticipants(input.participants, players);
+  const participants = resolveParticipants(input.participants, players, accounts);
   return {
     input,
     participants,
@@ -282,13 +284,20 @@ function sum(participants: ParsedMatchParticipant[], field: "kills" | "deaths" |
   return participants.reduce((total, participant) => total + participant[field], 0);
 }
 
-function resolveParticipants(participants: ParsedMatchParticipant[], players: PlayerProfile[]): MatchResultParticipant[] {
+function resolveParticipants(participants: ParsedMatchParticipant[], players: PlayerProfile[], accounts: RiotAccountProfile[]): MatchResultParticipant[] {
   const candidates = new Map<string, Set<string>>();
   const playerById = new Map(players.map((player) => [player.discordUserId, player]));
   for (const player of players) {
     for (const key of [player.displayName, player.riotGameName, `${player.riotGameName}#${player.riotTagLine}`].map(normalizePlayerName)) {
       const ids = candidates.get(key) ?? new Set<string>();
       ids.add(player.discordUserId);
+      candidates.set(key, ids);
+    }
+  }
+  for (const account of accounts) {
+    for (const key of [account.riotGameName, `${account.riotGameName}#${account.riotTagLine}`].map(normalizePlayerName)) {
+      const ids = candidates.get(key) ?? new Set<string>();
+      ids.add(account.discordUserId);
       candidates.set(key, ids);
     }
   }

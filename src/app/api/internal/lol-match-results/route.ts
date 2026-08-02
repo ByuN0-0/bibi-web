@@ -12,9 +12,11 @@ import {validateDataDragonReferences} from "@/lib/lol/data-dragon";
 import {
   findMatchResultByIngestionId,
   listPlayers,
+  listPlayerAccounts,
   replaceMatchResult,
   saveMatchResult,
 } from "@/lib/lol/repository";
+import {rebuildInhouseRatingSnapshot} from "@/lib/lol/inhouse-rating-service";
 
 const MAX_BODY_BYTES = 64 * 1024;
 
@@ -24,13 +26,16 @@ export async function GET(request: NextRequest) {
     if (!bearerTokenMatches(request.headers.get("authorization"), token)) {
       return errorResponse("인증이 필요합니다.", 401, "UNAUTHORIZED");
     }
-    const players = await listPlayers();
+    const [players, accounts] = await Promise.all([listPlayers(), listPlayerAccounts()]);
     return NextResponse.json({
       players: players.map((player) => ({
         discordUserId: player.discordUserId,
         displayName: player.displayName,
         riotGameName: player.riotGameName,
         riotTagLine: player.riotTagLine,
+        accounts: accounts.filter((account) => account.discordUserId === player.discordUserId).map((account) => ({
+          riotGameName: account.riotGameName, riotTagLine: account.riotTagLine, isPrimary: account.isPrimary,
+        })),
       })),
     });
   } catch {
@@ -60,8 +65,8 @@ export async function POST(request: NextRequest) {
     }
     const parsed = parseMatchResultInput(body);
     await validateDataDragonReferences(parsed);
-    const players = await listPlayers();
-    const prepared = prepareMatchResult(parsed, players);
+    const [players, accounts] = await Promise.all([listPlayers(), listPlayerAccounts()]);
+    const prepared = prepareMatchResult(parsed, players, accounts);
     const existing = await findMatchResultByIngestionId(parsed.ingestionId);
     if (existing) {
       const sourceHash = matchResultSourceHash(parsed);
@@ -87,8 +92,10 @@ export async function POST(request: NextRequest) {
           updatedAt: now,
         };
         await replaceMatchResult(existing, updated);
+        await rebuildInhouseRatingSnapshot();
         return NextResponse.json({status: "UPDATED", created: false, result: updated});
       }
+      await rebuildInhouseRatingSnapshot();
       return NextResponse.json({status: "EXISTING", created: false, result: existing.value});
     }
     const sourceHash = matchResultSourceHash(parsed);
@@ -103,6 +110,7 @@ export async function POST(request: NextRequest) {
         "INGESTION_ID_CONFLICT",
       );
     }
+    if (saved.created) await rebuildInhouseRatingSnapshot();
     return NextResponse.json({status: saved.created ? "CREATED" : "EXISTING", ...saved}, {
       status: saved.created ? 201 : 200,
     });

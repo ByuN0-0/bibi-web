@@ -2,10 +2,11 @@ import {beforeEach, describe, expect, it, vi} from "vitest";
 import {NextRequest} from "next/server";
 import {makePlayers, makeStoredResult} from "@/lib/lol/match-result-test-fixtures";
 
-const mocks = vi.hoisted(() => ({hasSession: vi.fn(), hasOrigin: vi.fn(), findResult: vi.fn(), listPlayers: vi.fn(), replaceResult: vi.fn(), validateAssets: vi.fn()}));
+const mocks = vi.hoisted(() => ({hasSession: vi.fn(), hasOrigin: vi.fn(), findResult: vi.fn(), listPlayers: vi.fn(), replaceResult: vi.fn(), validateAssets: vi.fn(), rebuildRatings: vi.fn()}));
 vi.mock("@/lib/auth-server", () => ({hasApiSession: mocks.hasSession, hasSameOrigin: mocks.hasOrigin}));
 vi.mock("@/lib/lol/data-dragon", () => ({validateDataDragonReferences: mocks.validateAssets}));
 vi.mock("@/lib/lol/repository", () => ({findMatchResult: mocks.findResult, listPlayers: mocks.listPlayers, replaceMatchResult: mocks.replaceResult}));
+vi.mock("@/lib/lol/inhouse-rating-service", () => ({rebuildInhouseRatingSnapshot: mocks.rebuildRatings}));
 
 import {PATCH} from "@/app/api/lol-statics/match-results/[matchResultId]/route";
 
@@ -17,6 +18,7 @@ describe("admin correction route", () => {
     mocks.listPlayers.mockReset().mockResolvedValue(makePlayers());
     mocks.replaceResult.mockReset().mockResolvedValue(undefined);
     mocks.validateAssets.mockReset().mockResolvedValue(undefined);
+    mocks.rebuildRatings.mockReset().mockResolvedValue(undefined);
   });
 
   it("requires an admin session and same-origin request", async () => {

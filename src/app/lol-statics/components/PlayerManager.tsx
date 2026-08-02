@@ -1,7 +1,7 @@
 "use client";
 
 import {FormEvent, useCallback, useEffect, useState} from "react";
-import {rankDisplay, ROLE_LABEL, ROLES, type PlayerProfile, type Role} from "@/lib/lol/types";
+import {rankDisplay, ROLE_LABEL, ROLES, type PlayerProfile, type RiotAccountProfile, type Role} from "@/lib/lol/types";
 
 const empty = {
   discordUserId: "",
@@ -24,6 +24,8 @@ export default function PlayerManager({initialPlayers}: {initialPlayers: PlayerP
   const [form, setForm] = useState(empty);
   const [message, setMessage] = useState("");
   const [pendingAction, setPendingAction] = useState<string | null>(null);
+  const [accounts, setAccounts] = useState<Record<string, RiotAccountProfile[]>>({});
+  const [alt, setAlt] = useState<Record<string, {riotGameName: string; riotTagLine: string}>>({});
 
   const reload = useCallback(async () => {
     const response = await fetch("/api/lol-statics/players", {cache: "no-store"});
@@ -94,7 +96,7 @@ export default function PlayerManager({initialPlayers}: {initialPlayers: PlayerP
         retryAt?: number;
       };
       setMessage(response.ok
-        ? "웹 서버에서 롤 계정과 최근 전적을 갱신했습니다."
+        ? "갱신을 요청했습니다. Java 봇이 백그라운드에서 처리하며 화면은 자동으로 갱신됩니다."
         : result.retryAt
           ? `${result.error} ${formatDateTime(result.retryAt)} 이후 다시 시도해 주세요.`
           : result.error ?? "롤 계정을 갱신하지 못했습니다.");
@@ -104,6 +106,39 @@ export default function PlayerManager({initialPlayers}: {initialPlayers: PlayerP
     } finally {
       setPendingAction(null);
     }
+  }
+
+  async function loadAccounts(discordUserId: string) {
+    const response = await fetch(`/api/lol-statics/players/${discordUserId}/accounts`, {cache: "no-store"});
+    if (response.ok) {
+      const result = await response.json();
+      setAccounts((current) => ({...current, [discordUserId]: result.accounts}));
+    }
+  }
+
+  async function addAlt(discordUserId: string) {
+    const value = alt[discordUserId] ?? {riotGameName: "", riotTagLine: ""};
+    setPendingAction(`account-${discordUserId}`);
+    const response = await fetch(`/api/lol-statics/players/${discordUserId}/accounts`, {
+      method: "POST", headers: {"Content-Type": "application/json"}, body: JSON.stringify(value),
+    });
+    const result = await response.json();
+    setMessage(response.ok ? "부계정을 등록하고 전적 갱신을 요청했습니다." : result.error ?? "부계정을 등록하지 못했습니다.");
+    if (response.ok) {
+      setAccounts((current) => ({...current, [discordUserId]: result.accounts}));
+      setAlt((current) => ({...current, [discordUserId]: {riotGameName: "", riotTagLine: ""}}));
+      await reload();
+    }
+    setPendingAction(null);
+  }
+
+  async function accountAction(discordUserId: string, accountId: string, method: "PATCH" | "DELETE") {
+    setPendingAction(accountId);
+    const response = await fetch(`/api/lol-statics/players/${discordUserId}/accounts/${accountId}`, {method});
+    const result = await response.json();
+    setMessage(response.ok ? method === "PATCH" ? "대표 계정을 변경했습니다." : "계정을 삭제하고 재집계를 요청했습니다." : result.error ?? "계정을 변경하지 못했습니다.");
+    if (response.ok) { await loadAccounts(discordUserId); await reload(); }
+    setPendingAction(null);
   }
 
   return (
@@ -132,13 +167,13 @@ export default function PlayerManager({initialPlayers}: {initialPlayers: PlayerP
 
         <section className="surface-card p-5 sm:p-6">
           <div className="flex items-center justify-between gap-4">
-            <div><h2 className="font-bold">등록 선수 {players.length}명</h2><p className="mt-1 text-xs text-[var(--muted)]">웹 서버 직접 갱신 · 선수별 15분에 한 번 가능</p></div>
+            <div><h2 className="font-bold">등록 선수 {players.length}명</h2><p className="mt-1 text-xs text-[var(--muted)]">Java 봇 백그라운드 갱신 · 선수별 15분에 한 번 가능</p></div>
           </div>
           <div className="mt-5 space-y-3">
             {players.map((player) => {
               const inProgress = player.syncStatus === "REQUESTED" || player.syncStatus === "SYNCING";
               return (
-                <details key={player.discordUserId} className="group rounded-xl border border-[var(--hairline-soft)] bg-white p-4 open:border-[var(--hairline)]">
+                <details key={player.discordUserId} onToggle={(event) => { if (event.currentTarget.open && !accounts[player.discordUserId]) void loadAccounts(player.discordUserId); }} className="group rounded-xl border border-[var(--hairline-soft)] bg-white p-4 open:border-[var(--hairline)]">
                   <summary className="cursor-pointer list-none">
                     <div className="flex flex-wrap items-center justify-between gap-3">
                       <div>
@@ -151,6 +186,17 @@ export default function PlayerManager({initialPlayers}: {initialPlayers: PlayerP
                   <div className="mt-4 border-t border-[var(--hairline-soft)] pt-4">
                     <p className="mb-3 text-xs text-[var(--muted)]">{syncDetail(player)}</p>
                     <p className="mb-3 text-sm font-bold text-[var(--primary)]">종합 실력지표 {overallScore(player)}점</p>
+                    <div className="mb-4 rounded-xl bg-[var(--surface-soft)] p-3">
+                      <p className="text-xs font-semibold">최근 플레이 라인 · 소환사의 협곡 최대 50경기</p>
+                      <p className="mt-2 text-xs text-[var(--muted)]">{recentRoleSummary(player)}</p>
+                    </div>
+                    <div className="mb-4 rounded-xl border border-[var(--hairline-soft)] p-3">
+                      <p className="text-xs font-semibold">Riot 계정 · 최대 2개</p>
+                      <div className="mt-2 space-y-2">
+                        {(accounts[player.discordUserId] ?? []).map((account) => <div key={account.accountId} className="flex flex-wrap items-center justify-between gap-2 rounded-lg bg-[var(--surface-soft)] px-3 py-2 text-xs"><span>{account.riotGameName}#{account.riotTagLine} {account.isPrimary && <b className="text-[var(--primary)]">· 대표</b>}</span><span className="flex gap-1">{!account.isPrimary && <button disabled={pendingAction !== null} onClick={() => accountAction(player.discordUserId, account.accountId, "PATCH")} className="rounded border bg-white px-2 py-1">대표로</button>}{(accounts[player.discordUserId]?.length ?? 0) > 1 && <button disabled={pendingAction !== null} onClick={() => accountAction(player.discordUserId, account.accountId, "DELETE")} className="rounded border border-[#f2b8aa] bg-white px-2 py-1 text-[var(--error)]">삭제</button>}</span></div>)}
+                        {(accounts[player.discordUserId]?.length ?? 0) < 2 && <div className="grid grid-cols-[1fr_76px_auto] gap-2"><input placeholder="부계정 게임 이름" value={alt[player.discordUserId]?.riotGameName ?? ""} onChange={(event) => setAlt((current) => ({...current, [player.discordUserId]: {...(current[player.discordUserId] ?? {riotGameName: "", riotTagLine: ""}), riotGameName: event.target.value}}))} className="form-control text-xs"/><input placeholder="태그" value={alt[player.discordUserId]?.riotTagLine ?? ""} onChange={(event) => setAlt((current) => ({...current, [player.discordUserId]: {...(current[player.discordUserId] ?? {riotGameName: "", riotTagLine: ""}), riotTagLine: event.target.value}}))} className="form-control text-xs"/><button disabled={pendingAction !== null || !alt[player.discordUserId]?.riotGameName || !alt[player.discordUserId]?.riotTagLine} onClick={() => addAlt(player.discordUserId)} className="secondary-button px-3 text-xs">부계정 추가</button></div>}
+                      </div>
+                    </div>
                     <div className="grid gap-2 sm:grid-cols-2 lg:grid-cols-3">
                       {ROLES.map((role) => {
                         const stats = player.roleStats?.[role];
@@ -190,7 +236,7 @@ function overallScore(player: PlayerProfile) {
 
 function syncDetail(player: PlayerProfile) {
   if (player.syncStatus === "REQUESTED") return "디스코드 봇의 기존 갱신 요청을 기다리고 있습니다. 웹에서는 중복 호출하지 않습니다.";
-  if (player.syncStatus === "SYNCING") return "웹 서버 또는 디스코드 봇이 Riot에서 최근 전적을 가져오는 중입니다. 화면은 자동으로 업데이트됩니다.";
+  if (player.syncStatus === "SYNCING") return "Java 봇이 Riot에서 연결 계정과 최근 전적을 가져오는 중입니다. 화면은 자동으로 업데이트됩니다.";
   if (player.syncStatus === "FAILED") return `마지막 갱신 실패${player.syncErrorCode ? ` · ${player.syncErrorCode}` : ""}`;
   return player.lastSyncedAt ? `마지막 갱신 ${formatDateTime(player.lastSyncedAt)}` : "아직 갱신된 기록이 없습니다.";
 }
@@ -201,3 +247,9 @@ const formatDateTime = (time: number) => new Intl.DateTimeFormat("ko-KR", {
   hour: "2-digit",
   minute: "2-digit",
 }).format(time);
+
+function recentRoleSummary(player: PlayerProfile) {
+  const sample = player.recentRoleSampleCount ?? 0;
+  if (!sample) return "갱신 후 최근 플레이 라인이 표시됩니다.";
+  return ROLES.map((role) => `${ROLE_LABEL[role]} ${Math.round(((player.recentRoleCounts?.[role] ?? 0) / sample) * 100)}%`).join(" · ") + ` (총 ${sample}경기)`;
+}

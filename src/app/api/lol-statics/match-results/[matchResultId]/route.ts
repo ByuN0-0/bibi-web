@@ -4,6 +4,7 @@ import {MatchResultError, parseAdminMatchResultUpdate} from "@/lib/lol/match-res
 import {validateDataDragonReferences} from "@/lib/lol/data-dragon";
 import {findMatchResult, listPlayers, replaceMatchResult} from "@/lib/lol/repository";
 import type {MatchResult} from "@/lib/lol/types";
+import {rebuildInhouseRatingSnapshot} from "@/lib/lol/inhouse-rating-service";
 
 export async function PATCH(
   request: NextRequest,
@@ -42,6 +43,7 @@ export async function PATCH(
       updatedAt: now,
     };
     await replaceMatchResult(document, result);
+    await rebuildInhouseRatingSnapshot();
     return NextResponse.json({result});
   } catch (error) {
     if (error instanceof MatchResultError) return responseError(error.message, error.status);

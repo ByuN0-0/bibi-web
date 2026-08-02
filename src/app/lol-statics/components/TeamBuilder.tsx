@@ -1,7 +1,7 @@
 "use client";
 
 import {useMemo, useState} from "react";
-import {ROLE_LABEL, type PlayerProfile, type TeamAssignment, type TeamDraft} from "@/lib/lol/types";
+import {rankTierDisplay, ROLE_LABEL, type PlayerProfile, type TeamAssignment, type TeamDraft} from "@/lib/lol/types";
 
 export default function TeamBuilder({players, publicMode = false}: {players: PlayerProfile[]; publicMode?: boolean}) {
   const [selected, setSelected] = useState<string[]>([]);
@@ -92,7 +92,7 @@ export default function TeamBuilder({players, publicMode = false}: {players: Pla
                   </span>
                   {active && <span className="grid h-5 w-5 shrink-0 place-items-center rounded-full bg-[var(--primary)] text-white" aria-hidden="true">✓</span>}
                 </span>
-                <span className="mt-2 block text-[11px] text-[var(--muted)]">{ROLE_LABEL[player.primaryRole]} · {ready ? `종합 ${overallScore(player)}점` : syncStatusLabel(player.syncStatus)}</span>
+                <span className="mt-2 block text-[11px] text-[var(--muted)]">{ROLE_LABEL[player.primaryRole]} · {ready ? publicMode ? bestRankLabel(player) : `종합 ${overallScore(player)}점` : syncStatusLabel(player.syncStatus)}</span>
               </button>
             );
           })}
@@ -123,8 +123,8 @@ export default function TeamBuilder({players, publicMode = false}: {players: Pla
               {draft.status === "CONFIRMED" && <span className="rounded-full bg-[var(--success-soft)] px-3 py-1 text-xs font-bold text-[var(--success)]">확정됨</span>}
             </div>
             <div className="mt-6 grid gap-4 md:grid-cols-2">
-              <Team title="블루 팀" color="blue" assignments={draft.composition.blue} profiles={players} />
-              <Team title="레드 팀" color="red" assignments={draft.composition.red} profiles={players} />
+              <Team title="블루 팀" color="blue" assignments={draft.composition.blue} profiles={players} publicMode={publicMode} />
+              <Team title="레드 팀" color="red" assignments={draft.composition.red} profiles={players} publicMode={publicMode} />
             </div>
             {([...draft.composition.blue, ...draft.composition.red].some((player) => player.offRole || player.lowConfidence)) && (
               <div className="mt-4 rounded-xl border border-[#f2d28b] bg-[var(--warning-soft)] px-4 py-3 text-xs leading-5 text-[var(--warning)]">오프롤 또는 표본이 적은 포지션이 포함되어 있습니다. 선수별 표시를 확인하세요.</div>
@@ -136,7 +136,7 @@ export default function TeamBuilder({players, publicMode = false}: {players: Pla
   );
 }
 
-function Team({title, color, assignments, profiles}: {title: string; color: "blue" | "red"; assignments: TeamAssignment[]; profiles: PlayerProfile[]}) {
+function Team({title, color, assignments, profiles, publicMode}: {title: string; color: "blue" | "red"; assignments: TeamAssignment[]; profiles: PlayerProfile[]; publicMode: boolean}) {
   const byId = new Map(profiles.map((profile) => [profile.discordUserId, profile]));
   const theme = color === "blue"
     ? "border-[#cfe2ff] bg-[#f5f9ff] text-[#2463a5]"
@@ -149,7 +149,7 @@ function Team({title, color, assignments, profiles}: {title: string; color: "blu
           const score = Math.round((byId.get(player.discordUserId)?.roleStats?.[player.role]?.balanceSignal ?? 0.35) * 100);
           return (
             <div key={player.role} className="rounded-xl border border-black/[0.05] bg-white p-3 text-[var(--ink)]">
-              <div className="flex items-center justify-between gap-3"><span className="text-xs text-[var(--muted)]">{ROLE_LABEL[player.role]}</span><span className="text-[11px] text-[var(--muted)]">포지션 {score}점 · {player.rank}</span></div>
+              <div className="flex items-center justify-between gap-3"><span className="text-xs text-[var(--muted)]">{ROLE_LABEL[player.role]}</span><span className="text-[11px] text-[var(--muted)]">{publicMode ? `${player.rankQueue === "SOLO" ? "솔랭" : player.rankQueue === "FLEX" ? "자랭" : "랭크"} · ${player.rank}` : `포지션 ${score}점 · ${player.rank}`}</span></div>
               <p className="mt-1 truncate text-sm font-semibold">{player.displayName}</p>
               {(player.offRole || player.lowConfidence) && <p className="mt-1 text-[10px] text-[var(--warning)]">{player.offRole ? "오프롤" : ""}{player.offRole && player.lowConfidence ? " · " : ""}{player.lowConfidence ? "낮은 신뢰도" : ""}</p>}
             </div>
@@ -158,6 +158,16 @@ function Team({title, color, assignments, profiles}: {title: string; color: "blu
       </div>
     </div>
   );
+}
+
+function bestRankLabel(player: PlayerProfile) {
+  const tiers = ["IRON", "BRONZE", "SILVER", "GOLD", "PLATINUM", "EMERALD", "DIAMOND", "MASTER", "GRANDMASTER", "CHALLENGER"];
+  const divisions = ["IV", "III", "II", "I"];
+  const score = (rank: PlayerProfile["soloRank"]) => tiers.indexOf(rank?.tier ?? "") * 4 + Math.max(0, divisions.indexOf(rank?.division ?? ""));
+  const solo = score(player.soloRank);
+  const flex = score(player.flexRank);
+  if (solo < 0 && flex < 0) return "랭크 · 배치 전";
+  return solo >= flex ? `솔랭 · ${rankTierDisplay(player.soloRank)}` : `자랭 · ${rankTierDisplay(player.flexRank)}`;
 }
 
 function overallScore(player: PlayerProfile) {

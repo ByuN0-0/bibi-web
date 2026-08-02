@@ -5,7 +5,7 @@ export const SYNC_STALE_AFTER_MS = 15 * 60 * 1000;
 
 export type SyncRequestResult = {
   discordUserId: string;
-  status: "ALLOWED" | "ALREADY_REQUESTED" | "SYNCING" | "COOLDOWN" | "NOT_FOUND" | "CONFLICT";
+  status: "ALLOWED" | "REQUESTED" | "ALREADY_REQUESTED" | "SYNCING" | "COOLDOWN" | "NOT_FOUND" | "CONFLICT";
   retryAt?: number;
 };
 

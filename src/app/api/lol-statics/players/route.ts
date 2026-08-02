@@ -1,6 +1,6 @@
 import {NextRequest, NextResponse} from "next/server";
 import {hasApiSession, hasSameOrigin} from "@/lib/auth-server";
-import {findPlayer, listPlayers, savePlayer} from "@/lib/lol/repository";
+import {ensurePlayerAccounts, findPlayer, listPlayers, savePlayer, updatePrimaryPlayerAccount} from "@/lib/lol/repository";
 import {ROLES, type PlayerProfile, type Role} from "@/lib/lol/types";
 
 export async function GET(request: NextRequest) {
@@ -43,6 +43,8 @@ export async function POST(request: NextRequest) {
     createdAt: existing?.value.createdAt ?? now, updatedAt: now,
   };
   await savePlayer(profile);
+  if (existing) await updatePrimaryPlayerAccount(existing.value, input.riotGameName, input.riotTagLine);
+  else await ensurePlayerAccounts(profile);
   return NextResponse.json({player: profile, needsSync: identityChanged}, {status: existing ? 200 : 201});
 }
 

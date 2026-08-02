@@ -1,4 +1,4 @@
-export const ALGORITHM_VERSION = "team-balancing-v1";
+export const ALGORITHM_VERSION = "team-balancing-v2";
 export const ROLES = ["TOP", "JUNGLE", "MIDDLE", "BOTTOM", "UTILITY"] as const;
 export type Role = (typeof ROLES)[number];
 export const MATCH_TEAMS = ["BLUE", "RED"] as const;
@@ -50,6 +50,31 @@ export type MatchPerformance = {
   deathRateDiff: number;
 };
 
+export type RecentRoleMatch = {
+  matchId: string;
+  playedAt: number;
+  queueId: number;
+  role: Role;
+};
+
+export type RiotAccountProfile = {
+  schemaVersion: number;
+  accountId: string;
+  discordUserId: string;
+  isPrimary: boolean;
+  riotGameName: string;
+  riotTagLine: string;
+  puuid: string | null;
+  soloRank: RankInfo;
+  flexRank: RankInfo;
+  recentRoleMatches: RecentRoleMatch[];
+  latestScannedMatchId?: string | null;
+  syncErrorCode: string | null;
+  revision: number;
+  createdAt: number;
+  updatedAt: number;
+};
+
 export type PlayerProfile = {
   schemaVersion: number;
   discordUserId: string;
@@ -64,6 +89,8 @@ export type PlayerProfile = {
   flexRank: RankInfo;
   recentMatches: MatchPerformance[];
   roleStats: Partial<Record<Role, RoleStats>>;
+  recentRoleCounts?: Partial<Record<Role, number>>;
+  recentRoleSampleCount?: number;
   syncStatus: "REQUESTED" | "SYNCING" | "READY" | "FAILED";
   syncRequestedAt: number;
   lastSyncStartedAt: number;
@@ -79,8 +106,23 @@ export type TeamAssignment = {
   displayName: string;
   role: Role;
   rank: string;
+  rankQueue?: "SOLO" | "FLEX" | null;
   offRole: boolean;
   lowConfidence: boolean;
+};
+
+export type InhousePlayerRating = {
+  discordUserId: string;
+  elo: number;
+  matchCount: number;
+};
+
+export type InhouseRatingSnapshot = {
+  schemaVersion: number;
+  snapshotId: "current";
+  ratings: InhousePlayerRating[];
+  sourceMatchCount: number;
+  computedAt: number;
 };
 
 export type TeamComposition = {
@@ -209,4 +251,9 @@ export function rankDisplay(rank: RankInfo | null | undefined): string {
   if (!rank || rank.tier === "UNRANKED") return "배치 전";
   const division = rank.division ? ` ${rank.division}` : "";
   return `${rank.tier}${division} ${rank.leaguePoints}LP`;
+}
+
+export function rankTierDisplay(rank: RankInfo | null | undefined): string {
+  if (!rank || rank.tier === "UNRANKED") return "배치 전";
+  return `${rank.tier}${rank.division ? ` ${rank.division}` : ""}`;
 }

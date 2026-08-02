@@ -1,5 +1,6 @@
 import "server-only";
 import {latestSystemStatus, listPlayers, listRecentSessions} from "@/lib/lol/repository";
+import {getOrRebuildInhouseRatingSnapshot} from "@/lib/lol/inhouse-rating-service";
 import {balanceTeam} from "@/lib/lol/team-balancer";
 import {ALGORITHM_VERSION} from "@/lib/lol/types";
 
@@ -16,10 +17,11 @@ export async function generateTeamComposition(
   if (selectedDiscordUserIds.length !== 10 || new Set(selectedDiscordUserIds).size !== 10) {
     throw new TeamGenerationError("선수를 정확히 10명 선택해 주세요.", 400);
   }
-  const [status, allPlayers, recentSessions] = await Promise.all([
+  const [status, allPlayers, recentSessions, ratingSnapshot] = await Promise.all([
     latestSystemStatus(),
     listPlayers(),
-    listRecentSessions(5),
+    listRecentSessions(10),
+    getOrRebuildInhouseRatingSnapshot(),
   ]);
   if (!status || status.algorithmVersion !== ALGORITHM_VERSION) {
     throw new TeamGenerationError(
@@ -44,5 +46,7 @@ export async function generateTeamComposition(
     players as NonNullable<(typeof players)[number]>[],
     recentSessions,
     new Set(excludedSignatures.slice(0, 20)),
+    Math.random,
+    new Map((ratingSnapshot?.ratings ?? []).map((rating) => [rating.discordUserId, rating])),
   );
 }

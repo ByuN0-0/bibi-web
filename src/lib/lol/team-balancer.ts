@@ -1,6 +1,7 @@
 import {
   ALGORITHM_VERSION,
-  rankDisplay,
+  rankTierDisplay,
+  type InhousePlayerRating,
   type PlayerProfile,
   type Role,
   type TeamAssignment,
@@ -25,7 +26,7 @@ type SearchContext = {
   signals: number[][];
   preferences: number[][];
   repeatWeights: number[][];
-  recentCount: number;
+  recentWeightTotal: number;
   minimumOffRoles: number;
   minimumOffRoleMemo: number[][];
   bestByTeamMask: Map<number, Candidate>;
@@ -36,6 +37,7 @@ export function balanceTeam(
   recent: TeamSession[],
   excludedSignatures = new Set<string>(),
   random: () => number = Math.random,
+  ratings = new Map<string, InhousePlayerRating>(),
 ): TeamComposition {
   if (players.length !== PLAYER_COUNT) throw new Error("정확히 10명의 선수가 필요합니다.");
   if (new Set(players.map((player) => player.discordUserId)).size !== PLAYER_COUNT) {
@@ -44,7 +46,7 @@ export function balanceTeam(
   const ordered = [...players].sort((left, right) =>
     left.discordUserId < right.discordUserId ? -1 : left.discordUserId > right.discordUserId ? 1 : 0,
   );
-  const signals = ordered.map((player) => ROLES.map((role) => signal(player, role)));
+  const signals = ordered.map((player) => ROLES.map((role) => signal(player, role, ratings.get(player.discordUserId))));
   const preferences = ordered.map((player) => ROLES.map((role) => preferencePenalty(player, role)));
   const minimumOffRoleMemo = Array.from({length: ROLES.length + 1}, () =>
     new Array<number>(1 << PLAYER_COUNT).fill(-1));
@@ -53,7 +55,7 @@ export function balanceTeam(
     signals,
     preferences,
     repeatWeights: buildRepeatWeights(ordered, recent),
-    recentCount: recent.length,
+    recentWeightTotal: recent.reduce((sum, _session, index) => sum + Math.pow(0.85, index), 0),
     minimumOffRoles: 0,
     minimumOffRoleMemo,
     bestByTeamMask: new Map(),
@@ -66,13 +68,12 @@ export function balanceTeam(
       || (left.signature < right.signature ? -1 : left.signature > right.signature ? 1 : 0),
   );
   if (!candidates.length) throw new Error("팀 조합을 계산할 수 없습니다.");
-  const best = candidates[0].cost;
-  candidates = candidates
-    .filter((candidate) => candidate.cost <= best + 0.05)
-    .filter((candidate) => !excludedSignatures.has(candidate.signature))
-    .slice(0, 20);
+  const veryBalanced = candidates.filter((candidate) => candidate.teamGap <= 0.03 && candidate.maxLaneGap <= 0.10);
+  const balanced = candidates.filter((candidate) => candidate.teamGap <= 0.06 && candidate.maxLaneGap <= 0.18);
+  candidates = (veryBalanced.length ? veryBalanced : balanced.length ? balanced : candidates)
+    .filter((candidate) => !excludedSignatures.has(candidate.signature)).slice(0, 20);
   if (!candidates.length) throw new Error("현재 조건에서 새로운 팀 조합이 없습니다.");
-  return toComposition(weightedChoice(candidates, best, random), ordered);
+  return toComposition(weightedChoice(candidates, candidates[0].cost, random), ordered);
 }
 
 function minimumRemainingOffRoles(
@@ -162,7 +163,7 @@ function orientTeams(
     // Swapping every blue and red player produces the same team composition.
     if (!(blueMask & 1)) continue;
     const teamGap = Math.abs(blueTotal - redTotal) / 5;
-    const repeat = repeatPenalty(blueMask, context.repeatWeights, context.recentCount);
+    const repeat = repeatPenalty(blueMask, context.repeatWeights, context.recentWeightTotal);
     const cost = 0.35 * teamGap + 0.30 * (laneGapTotal / 5)
       + 0.15 * maxLaneGap + 0.15 * (preferenceTotal / PLAYER_COUNT) + 0.05 * repeat;
     const existing = context.bestByTeamMask.get(blueMask);
@@ -186,7 +187,8 @@ function orientTeams(
 function buildRepeatWeights(players: PlayerProfile[], recent: TeamSession[]) {
   const result = Array.from({length: PLAYER_COUNT}, () => new Array<number>(PLAYER_COUNT).fill(0));
   const indexById = new Map(players.map((player, index) => [player.discordUserId, index]));
-  recent.forEach((session) => {
+  recent.forEach((session, sessionIndex) => {
+    const decay = Math.pow(0.85, sessionIndex);
     [session.composition.blue, session.composition.red].forEach((team) => {
       for (let left = 0; left < team.length; left += 1) {
         const leftIndex = indexById.get(team[left].discordUserId);
@@ -196,7 +198,7 @@ function buildRepeatWeights(players: PlayerProfile[], recent: TeamSession[]) {
           if (rightIndex !== undefined) {
             const low = Math.min(leftIndex, rightIndex);
             const high = Math.max(leftIndex, rightIndex);
-            result[low][high] += 1;
+            result[low][high] += decay;
           }
         }
       }
@@ -205,8 +207,8 @@ function buildRepeatWeights(players: PlayerProfile[], recent: TeamSession[]) {
   return result;
 }
 
-function repeatPenalty(blueMask: number, weights: number[][], recentCount: number) {
-  if (!recentCount) return 0;
+function repeatPenalty(blueMask: number, weights: number[][], recentWeightTotal: number) {
+  if (!recentWeightTotal) return 0;
   let repeated = 0;
   for (let left = 0; left < PLAYER_COUNT; left += 1) {
     for (let right = left + 1; right < PLAYER_COUNT; right += 1) {
@@ -214,7 +216,7 @@ function repeatPenalty(blueMask: number, weights: number[][], recentCount: numbe
       if (sameTeam) repeated += weights[left][right];
     }
   }
-  return repeated / (20 * recentCount);
+  return repeated / (20 * recentWeightTotal);
 }
 
 function teamSignature(blueMask: number, players: PlayerProfile[]) {
@@ -248,8 +250,12 @@ function toComposition(candidate: Candidate, players: PlayerProfile[]): TeamComp
   };
 }
 
-function signal(player: PlayerProfile, role: Role) {
-  return player.roleStats?.[role]?.balanceSignal ?? 0.35;
+function signal(player: PlayerProfile, role: Role, rating?: InhousePlayerRating) {
+  const performance = player.roleStats?.[role]?.balanceSignal ?? 0.35;
+  if (!rating?.matchCount) return performance;
+  const inhouse = Math.max(0, Math.min(1, 0.5 + (rating.elo - 1500) / 800));
+  const weight = Math.min(rating.matchCount / 10, 1) * 0.30;
+  return performance * (1 - weight) + inhouse * weight;
 }
 
 function preferencePenalty(player: PlayerProfile, role: Role) {
@@ -262,15 +268,28 @@ const offRole = (preference: number) => preference === 1 ? 1 : 0;
 
 function assignment(player: PlayerProfile, role: Role): TeamAssignment {
   const stats = player.roleStats?.[role];
-  const rank = player.soloRank?.tier !== "UNRANKED" ? player.soloRank : player.flexRank;
+  const soloScore = rankScore(player.soloRank);
+  const flexScore = rankScore(player.flexRank);
+  const rankQueue = soloScore >= flexScore && soloScore >= 0 ? "SOLO" : flexScore >= 0 ? "FLEX" : null;
+  const rank = rankQueue === "SOLO" ? player.soloRank : rankQueue === "FLEX" ? player.flexRank : null;
   return {
     discordUserId: player.discordUserId,
     displayName: player.displayName,
     role,
-    rank: rankDisplay(rank),
+    rank: rankTierDisplay(rank),
+    rankQueue,
     offRole: preferencePenalty(player, role) === 1,
     lowConfidence: !stats || stats.confidence < 0.6,
   };
+}
+
+const TIERS = ["IRON", "BRONZE", "SILVER", "GOLD", "PLATINUM", "EMERALD", "DIAMOND", "MASTER", "GRANDMASTER", "CHALLENGER"];
+const DIVISIONS = ["IV", "III", "II", "I"];
+function rankScore(rank: PlayerProfile["soloRank"]) {
+  const tier = TIERS.indexOf(rank?.tier ?? "");
+  if (tier < 0) return -1;
+  const division = Math.max(0, DIVISIONS.indexOf(rank.division));
+  return tier * 4 + division;
 }
 
 function weightedChoice(candidates: Candidate[], best: number, random: () => number) {

@@ -3,11 +3,12 @@ import {NextRequest} from "next/server";
 import type {MatchResult} from "@/lib/lol/types";
 import {makeMatchInput, makePlayers} from "@/lib/lol/match-result-test-fixtures";
 
-const mocks = vi.hoisted(() => ({findByIngestionId: vi.fn(), listPlayers: vi.fn(), replace: vi.fn(), save: vi.fn(), validateAssets: vi.fn()}));
+const mocks = vi.hoisted(() => ({findByIngestionId: vi.fn(), listPlayers: vi.fn(), listAccounts: vi.fn(), replace: vi.fn(), save: vi.fn(), validateAssets: vi.fn(), rebuildRatings: vi.fn()}));
 
 vi.mock("@/lib/server-env", () => ({getIngestServerEnv: () => ({token: "ingest-token-that-is-at-least-32-characters"})}));
 vi.mock("@/lib/lol/data-dragon", () => ({validateDataDragonReferences: mocks.validateAssets}));
-vi.mock("@/lib/lol/repository", () => ({findMatchResultByIngestionId: mocks.findByIngestionId, listPlayers: mocks.listPlayers, replaceMatchResult: mocks.replace, saveMatchResult: mocks.save}));
+vi.mock("@/lib/lol/repository", () => ({findMatchResultByIngestionId: mocks.findByIngestionId, listPlayers: mocks.listPlayers, listPlayerAccounts: mocks.listAccounts, replaceMatchResult: mocks.replace, saveMatchResult: mocks.save}));
+vi.mock("@/lib/lol/inhouse-rating-service", () => ({rebuildInhouseRatingSnapshot: mocks.rebuildRatings}));
 
 import {GET, POST} from "@/app/api/internal/lol-match-results/route";
 
@@ -19,6 +20,8 @@ describe("internal match result route", () => {
     const players = makePlayers();
     mocks.findByIngestionId.mockReset().mockResolvedValue(null);
     mocks.listPlayers.mockReset().mockResolvedValue(players);
+    mocks.listAccounts.mockReset().mockResolvedValue([]);
+    mocks.rebuildRatings.mockReset().mockResolvedValue(undefined);
     mocks.replace.mockReset().mockResolvedValue(undefined);
     mocks.save.mockReset().mockImplementation(async (result: MatchResult) => ({created: true, result}));
     mocks.validateAssets.mockReset().mockResolvedValue(undefined);

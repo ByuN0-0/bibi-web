@@ -39,6 +39,19 @@ describe("match result ingestion", () => {
     expect(() => prepareMatchResult(parseMatchResultInput(body), players)).toThrow("같은 등록 선수가 결과표에서 두 번 인식되었습니다.");
   });
 
+  it("maps a linked alt Riot ID to the owning player", () => {
+    const players = makePlayers();
+    const body = makeMatchInput(players);
+    body.participants[0].observedName = "숨겨둔부계정#KR2";
+    const prepared = prepareMatchResult(parseMatchResultInput(body), players, [{
+      schemaVersion: 1, accountId: "alt-1", discordUserId: "player-1", isPrimary: false,
+      riotGameName: "숨겨둔부계정", riotTagLine: "KR2", puuid: "alt-puuid",
+      soloRank: players[0].soloRank, flexRank: players[0].flexRank,
+      recentRoleMatches: [], syncErrorCode: null, revision: 1, createdAt: fixtureNow, updatedAt: fixtureNow,
+    }]);
+    expect(prepared.participants[0]).toEqual(expect.objectContaining({discordUserId: "player-1", guest: false}));
+  });
+
   it("rejects team size, fixed slots, objectives, negative values and total mismatches", () => {
     const wrongTeam = makeMatchInput();
     wrongTeam.participants[0].team = "RED";
