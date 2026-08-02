@@ -4,7 +4,9 @@ import {getServerEnv} from "@/lib/server-env";
 export type SodaDocument<T> = {id: string; etag: string; value: T};
 
 class SodaClient {
-  private readonly env = getServerEnv();
+  private get env() {
+    return getServerEnv();
+  }
 
   async ensureCollection(collection: string): Promise<void> {
     const response = await this.request("PUT", this.collectionUrl(collection));
@@ -68,16 +70,17 @@ class SodaClient {
     body?: unknown,
     etag?: string,
   ): Promise<Response> {
+    const env = this.env;
     let lastError: unknown;
     for (let attempt = 1; attempt <= 3; attempt += 1) {
       try {
         const response = await fetch(url, {
           method,
           cache: "no-store",
-          signal: AbortSignal.timeout(this.env.sodaTimeoutMs),
+          signal: AbortSignal.timeout(env.sodaTimeoutMs),
           headers: {
             Authorization: `Basic ${Buffer.from(
-              `${this.env.sodaUsername}:${this.env.sodaPassword}`,
+              `${env.sodaUsername}:${env.sodaPassword}`,
             ).toString("base64")}`,
             Accept: "application/json",
             ...(body === undefined ? {} : {"Content-Type": "application/json"}),

@@ -17,6 +17,7 @@ export const COLLECTIONS = {
 } as const;
 
 let collectionInitialization: Promise<void> | null = null;
+let loginCollectionInitialization: Promise<void> | null = null;
 
 export async function ensureCollections() {
   if (!collectionInitialization) {
@@ -28,6 +29,17 @@ export async function ensureCollections() {
     });
   }
   await collectionInitialization;
+}
+
+export async function ensureLoginCollection() {
+  if (!loginCollectionInitialization) {
+    loginCollectionInitialization = soda.ensureCollection(COLLECTIONS.loginAttempts)
+      .catch((error) => {
+        loginCollectionInitialization = null;
+        throw error;
+      });
+  }
+  await loginCollectionInitialization;
 }
 
 async function findOne<T>(collection: string, filter: Record<string, unknown>) {

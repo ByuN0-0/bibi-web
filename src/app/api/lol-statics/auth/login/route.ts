@@ -1,17 +1,37 @@
 import {createHmac} from "node:crypto";
 import {NextRequest, NextResponse} from "next/server";
 import {hasSameOrigin, safeEqual} from "@/lib/auth-server";
-import {clearLoginAttempt, ensureCollections, getLoginAttempt, saveLoginAttempt} from "@/lib/lol/repository";
+import {clearLoginAttempt, ensureLoginCollection, getLoginAttempt, saveLoginAttempt} from "@/lib/lol/repository";
 import {getServerEnv} from "@/lib/server-env";
 import {createSession, SESSION_COOKIE, SESSION_TTL_SECONDS} from "@/lib/session";
 import {isLoginLocked, recordLoginFailure} from "@/lib/login-rate-limit";
 
 export async function POST(request: NextRequest) {
+  try {
+    return await handleLogin(request);
+  } catch (error) {
+    const message = error instanceof Error ? error.message : "Unknown login error";
+    const configurationError = message.startsWith("Missing required environment variable")
+      || message.startsWith("ADMIN_PASSWORD")
+      || message.startsWith("SESSION_SECRET")
+      || message.startsWith("SODA_BASE_URL")
+      || message.startsWith("SODA_TIMEOUT_SECONDS");
+    console.error(`[lol-login] ${configurationError ? "configuration" : "storage"} error: ${message}`);
+    return NextResponse.json({
+      error: configurationError
+        ? "서버 환경변수 설정을 확인해 주세요."
+        : "로그인 저장소에 연결할 수 없습니다.",
+      code: configurationError ? "CONFIGURATION_ERROR" : "SODA_UNAVAILABLE",
+    }, {status: 503});
+  }
+}
+
+async function handleLogin(request: NextRequest) {
   if (!hasSameOrigin(request)) {
     return NextResponse.json({error: "허용되지 않은 요청 출처입니다."}, {status: 403});
   }
   const env = getServerEnv();
-  await ensureCollections();
+  await ensureLoginCollection();
   const forwarded = request.headers.get("x-forwarded-for")?.split(",")[0]?.trim();
   const ip = forwarded || request.headers.get("x-real-ip") || "unknown";
   const ipHash = createHmac("sha256", env.sessionSecret).update(ip).digest("hex");
