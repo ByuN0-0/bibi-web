@@ -27,16 +27,16 @@ export default async function LolMemberPage({searchParams}: {searchParams: Promi
   return (
     <div className="min-h-screen bg-[var(--surface-soft)]">
       <Header />
-      <main className="page-shell pb-16 pt-32 sm:pb-20 sm:pt-36">
-        <div className="mb-9 flex flex-col justify-between gap-5 sm:flex-row sm:items-end">
+      <main className="page-shell pb-14 pt-24 sm:pb-16 sm:pt-28">
+        <div className="mb-5 flex flex-col justify-between gap-3 sm:flex-row sm:items-end">
           <div>
             <p className="eyebrow">BIBI LoL</p>
-            <h1 className="mt-3 text-3xl font-bold tracking-[-0.03em] sm:text-4xl">롤 내전</h1>
-            <p className="mt-4 max-w-2xl text-sm leading-6 text-[var(--muted)] sm:text-base sm:leading-7">
+            <h1 className="mt-1.5 text-2xl font-bold tracking-[-0.03em] sm:text-3xl">롤 내전</h1>
+            <p className="mt-2 max-w-2xl text-sm leading-5 text-[var(--muted)]">
               최근 전적을 반영해 팀을 편성하고, 친구들과 진행한 내전 경기 기록을 확인하세요.
             </p>
           </div>
-          <Link href="/lol-statics/login" className="secondary-button self-start sm:self-auto">관리자 화면</Link>
+          <Link href="/lol-statics/login" className="secondary-button min-h-10 self-start px-4 sm:self-auto">관리자 화면</Link>
         </div>
         <PublicLolHub players={players} playerLoadFailed={loadFailed} initialTab={tab === "history" ? "history" : "team"} />
       </main>

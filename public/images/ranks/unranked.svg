@@ -1,0 +1,6 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 128 128" role="img" aria-labelledby="title">
+  <title id="title">배치 전</title>
+  <path fill="#eef0f3" stroke="#9aa1aa" stroke-width="6" d="M64 10 108 29v32c0 29-18 48-44 57C38 109 20 90 20 61V29Z"/>
+  <path fill="none" stroke="#7d858f" stroke-linecap="round" stroke-width="9" d="M48 49c3-10 11-15 20-15 12 0 21 7 21 18 0 10-7 15-15 20-6 4-9 8-9 14"/>
+  <circle cx="64" cy="101" r="5" fill="#7d858f"/>
+</svg>

@@ -53,7 +53,7 @@ export default function PublicLolHub({players, playerLoadFailed, initialTab}: {
 
   return (
     <>
-      <div className="mb-7 inline-flex rounded-xl border border-[var(--hairline)] bg-white p-1" role="tablist" aria-label="롤 내전 메뉴">
+      <div className="mb-4 inline-flex rounded-lg border border-[var(--hairline)] bg-white p-1" role="tablist" aria-label="롤 내전 메뉴">
         <TabButton active={tab === "team"} onClick={() => selectTab("team")}>팀 편성</TabButton>
         <TabButton active={tab === "history"} onClick={() => selectTab("history")}>내전 기록</TabButton>
       </div>
@@ -79,5 +79,5 @@ export default function PublicLolHub({players, playerLoadFailed, initialTab}: {
 }
 
 function TabButton({active, onClick, children}: {active: boolean; onClick: () => void; children: React.ReactNode}) {
-  return <button type="button" role="tab" aria-selected={active} onClick={onClick} className={`min-h-11 rounded-lg px-5 text-sm font-bold ${active ? "bg-[var(--primary)] text-white shadow-sm" : "text-[var(--muted)] hover:bg-[var(--surface-soft)] hover:text-[var(--ink)]"}`}>{children}</button>;
+  return <button type="button" role="tab" aria-selected={active} onClick={onClick} className={`min-h-10 rounded-md px-4 text-sm font-bold ${active ? "bg-[var(--primary)] text-white shadow-sm" : "text-[var(--muted)] hover:bg-[var(--surface-soft)] hover:text-[var(--ink)]"}`}>{children}</button>;
 }
