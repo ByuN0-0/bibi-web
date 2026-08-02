@@ -11,6 +11,8 @@ import {
 
 const REQUEST_INTERVAL_MS = 1_300;
 const MAX_MATCH_AGE_MS = 60 * 24 * 60 * 60 * 1000;
+const MATCHES_PER_QUEUE = 8;
+const MAX_RECENT_MATCHES = MATCHES_PER_QUEUE * 2;
 const unranked = (): RankInfo => ({tier: "UNRANKED", division: "", leaguePoints: 0, wins: 0, losses: 0});
 
 let throttleQueue = Promise.resolve();
@@ -102,7 +104,7 @@ class RiotClient {
     return matches
       .sort((left, right) => numberAt(objectAt(right, "info"), "gameStartTimestamp")
         - numberAt(objectAt(left, "info"), "gameStartTimestamp"))
-      .slice(0, 20);
+      .slice(0, MAX_RECENT_MATCHES);
   }
 
   async getTimeline(matchId: string) {
@@ -111,7 +113,7 @@ class RiotClient {
 
   private async getMatchIds(puuid: string, queue: number) {
     const payload = await this.get(this.regional(
-      `/lol/match/v5/matches/by-puuid/${encodeURIComponent(puuid)}/ids?queue=${queue}&start=0&count=20`,
+      `/lol/match/v5/matches/by-puuid/${encodeURIComponent(puuid)}/ids?queue=${queue}&start=0&count=${MATCHES_PER_QUEUE}`,
     ));
     return array(payload).filter((value): value is string => typeof value === "string");
   }

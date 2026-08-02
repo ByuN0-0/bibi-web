@@ -3,7 +3,7 @@ import {hasApiSession, hasSameOrigin} from "@/lib/auth-server";
 import {RiotApiError} from "@/lib/lol/riot-client";
 import {syncPlayerFromWeb, WebSyncError} from "@/lib/lol/web-sync-service";
 
-export const maxDuration = 300;
+export const maxDuration = 60;
 
 export async function POST(request: NextRequest) {
   if (!await hasApiSession(request)) return NextResponse.json({error: "인증이 필요합니다."}, {status: 401});
