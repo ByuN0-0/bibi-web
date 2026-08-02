@@ -14,6 +14,7 @@ export function makeMatchInput(players = makePlayers(), action: "validate" | "co
   const participants = players.slice(0, 10).map((player, index) => ({
     team: index < 5 ? "BLUE" : "RED",
     observedName: player.riotGameName,
+    discordUserId: null as string | null,
     champion: {...champion},
     primaryPerk: {...perk},
     summonerSpells: [{...spell}, {...spell}],

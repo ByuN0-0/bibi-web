@@ -20,7 +20,7 @@ const OBJECTIVE_FIELDS = [
   "voidGrubKills",
 ] as const satisfies ReadonlyArray<keyof MatchObjectives>;
 
-export type ParsedMatchParticipant = Omit<MatchResultParticipant, "discordUserId" | "guest">;
+export type ParsedMatchParticipant = Omit<MatchResultParticipant, "guest">;
 
 export type ParsedMatchResultInput = {
   ingestionId: string;
@@ -162,6 +162,7 @@ export function matchResultSourceHash(input: ParsedMatchResultInput): string {
     ...input,
     participants: input.participants.map((participant) => ({
       ...participant,
+      discordUserId: undefined,
       observedName: normalizePlayerName(participant.observedName),
     })),
   })).digest("hex");
@@ -173,9 +174,13 @@ function parseParticipants(value: unknown): ParsedMatchParticipant[] {
   }
   const participants = value.map((item, index): ParsedMatchParticipant => {
     const participant = record(item, `participants[${index}]가 올바르지 않습니다.`);
+    const requestedDiscordUserId = typeof participant.discordUserId === "string" && participant.discordUserId.trim()
+      ? text(participant.discordUserId, `participants[${index}].discordUserId`, 80)
+      : null;
     return {
       team: matchTeam(participant.team),
       observedName: text(participant.observedName, `participants[${index}].observedName`, 80),
+      discordUserId: requestedDiscordUserId,
       champion: assetRef(participant.champion, `participants[${index}].champion`),
       primaryPerk: assetRef(participant.primaryPerk, `participants[${index}].primaryPerk`),
       summonerSpells: fixedAssetSlots(participant.summonerSpells, 2, `participants[${index}].summonerSpells`, false),
@@ -279,6 +284,7 @@ function sum(participants: ParsedMatchParticipant[], field: "kills" | "deaths" |
 
 function resolveParticipants(participants: ParsedMatchParticipant[], players: PlayerProfile[]): MatchResultParticipant[] {
   const candidates = new Map<string, Set<string>>();
+  const playerById = new Map(players.map((player) => [player.discordUserId, player]));
   for (const player of players) {
     for (const key of [player.displayName, player.riotGameName, `${player.riotGameName}#${player.riotTagLine}`].map(normalizePlayerName)) {
       const ids = candidates.get(key) ?? new Set<string>();
@@ -289,7 +295,10 @@ function resolveParticipants(participants: ParsedMatchParticipant[], players: Pl
   const used = new Set<string>();
   return participants.map((participant) => {
     const matches = [...(candidates.get(normalizePlayerName(participant.observedName)) ?? [])];
-    const discordUserId = matches.length === 1 ? matches[0] : null;
+    if (participant.discordUserId && !playerById.has(participant.discordUserId)) {
+      throw new MatchResultError(`${participant.observedName}에 지정한 등록 선수를 찾을 수 없습니다.`);
+    }
+    const discordUserId = participant.discordUserId ?? (matches.length === 1 ? matches[0] : null);
     if (discordUserId && used.has(discordUserId)) {
       throw new MatchResultError("같은 등록 선수가 결과표에서 두 번 인식되었습니다.");
     }

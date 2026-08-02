@@ -27,6 +27,18 @@ describe("match result ingestion", () => {
     ]));
   });
 
+  it("accepts an explicit registered player selected from the ingest catalog", () => {
+    const players = makePlayers();
+    const body = makeMatchInput(players);
+    body.participants[0].observedName = "화면에서 읽은 별명";
+    body.participants[0].discordUserId = players[0].discordUserId;
+    const prepared = prepareMatchResult(parseMatchResultInput(body), players);
+    expect(prepared.participants[0]).toEqual(expect.objectContaining({discordUserId: "player-1", guest: false}));
+
+    body.participants[1].discordUserId = players[0].discordUserId;
+    expect(() => prepareMatchResult(parseMatchResultInput(body), players)).toThrow("같은 등록 선수가 결과표에서 두 번 인식되었습니다.");
+  });
+
   it("rejects team size, fixed slots, objectives, negative values and total mismatches", () => {
     const wrongTeam = makeMatchInput();
     wrongTeam.participants[0].team = "RED";

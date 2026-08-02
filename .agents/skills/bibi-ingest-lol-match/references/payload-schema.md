@@ -6,6 +6,8 @@ Send `POST /api/internal/lol-match-results` with `Authorization: Bearer <BIBI_IN
 
 The match record is independent of team-balancing sessions and has no `sessionId`. The API maps uniquely matching player names when possible and stores every unmatched or ambiguous name as a guest. `ingestionId` is the only ingestion idempotency key.
 
+Before recognition, call authenticated `GET /api/internal/lol-match-results` or run `submit-match-result.mjs players`. The response contains only `discordUserId`, `displayName`, `riotGameName`, and `riotTagLine`. A participant may include a catalog-confirmed `discordUserId`; the server verifies that the player exists and is not used twice. Omit it or set it to null when the visual match is ambiguous.
+
 ```json
 {
   "action": "validate",
@@ -36,6 +38,7 @@ The match record is independent of team-balancing sessions and has no `sessionId
     {
       "team": "BLUE",
       "observedName": "화면 닉네임",
+      "discordUserId": "registered-player-id-or-null",
       "champion": {"id": "Ahri", "name": "아리", "iconPath": "img/champion/Ahri.png"},
       "primaryPerk": {"id": "8112", "name": "감전", "iconPath": "perk-images/Styles/Domination/Electrocute/Electrocute.png"},
       "summonerSpells": [
@@ -91,3 +94,5 @@ Team objective icons, left to right, represent: destroyed turrets, destroyed inh
 Before resolution, use the same payload but asset values may be Korean name strings. Nullable slots stay null. The resolver accepts `champion`, `primaryPerk`, both `summonerSpells`, six `items`, `trinket`, `questSlot`, and five `bans` in this name form. It fills `ddragonVersion` from the latest official version when omitted and computes `ingestionId` from the screenshot when omitted.
 
 The resolver stops when exact-name lookup and image comparison cannot produce a unique result. It never silently picks an ambiguous candidate.
+
+Player IDs are not Data Dragon assets and pass through the resolver unchanged. Re-validating an existing `ingestionId` never writes. After explicit approval, committing the same scoreboard with improved player IDs updates only its player mappings and revision history.

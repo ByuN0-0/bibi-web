@@ -2,8 +2,8 @@
 import {readFile} from "node:fs/promises";
 
 const [action, inputPath] = process.argv.slice(2);
-if (!(["validate", "commit"].includes(action)) || !inputPath) {
-  fail("Usage: submit-match-result.mjs <validate|commit> <payload.json>");
+if (!(action === "players" || (["validate", "commit"].includes(action) && inputPath))) {
+  fail("Usage: submit-match-result.mjs players | <validate|commit> <payload.json>");
 }
 
 const baseUrl = process.env.BIBI_WEB_BASE_URL?.trim().replace(/\/$/, "");
@@ -17,16 +17,17 @@ if (parsedBase.protocol !== "https:" && !["localhost", "127.0.0.1"].includes(par
 }
 
 let payload;
-try { payload = JSON.parse(await readFile(inputPath, "utf8")); } catch (error) { fail(`Could not read payload JSON: ${error.message}`); }
-delete payload.discordUserId;
-payload.action = action;
+if (action !== "players") {
+  try { payload = JSON.parse(await readFile(inputPath, "utf8")); } catch (error) { fail(`Could not read payload JSON: ${error.message}`); }
+  payload.action = action;
+}
 
 let response;
 try {
   response = await fetch(`${baseUrl}/api/internal/lol-match-results`, {
-    method: "POST",
-    headers: {"content-type": "application/json", authorization: `Bearer ${token}`},
-    body: JSON.stringify(payload),
+    method: action === "players" ? "GET" : "POST",
+    headers: {...(action === "players" ? {} : {"content-type": "application/json"}), authorization: `Bearer ${token}`},
+    ...(action === "players" ? {} : {body: JSON.stringify(payload)}),
     signal: AbortSignal.timeout(15_000),
   });
 } catch (error) {

@@ -174,7 +174,7 @@ export type MatchResultTeamStats = {
 export type MatchResultCorrection = {
   revision: number;
   correctedAt: number;
-  correctedBy: "web-admin";
+  correctedBy: "ingest-api" | "web-admin";
 };
 
 export type MatchResult = {
