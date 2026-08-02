@@ -38,4 +38,16 @@ describe(ALGORITHM_VERSION, () => {
     const second = balanceTeam(players(), [], new Set([first.signature]), javaRandom(fixture.seed));
     expect(second.signature).not.toBe(first.signature);
   });
+
+  it("handles a worst-case shared role preference without exhaustive objects", () => {
+    const samePreferences = players().map((player) => ({
+      ...player,
+      primaryRole: "TOP" as const,
+      secondaryRole: "JUNGLE" as const,
+    }));
+
+    const result = balanceTeam(samePreferences, [], new Set(), javaRandom(fixture.seed));
+
+    expect([...result.blue, ...result.red].filter((player) => player.offRole)).toHaveLength(6);
+  });
 });

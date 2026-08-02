@@ -6,6 +6,8 @@ import {
 } from "@/lib/lol/team-generator";
 import {recordPublicTeamRequest} from "@/lib/lol/public-team-rate-limit";
 
+export const maxDuration = 60;
+
 type RequestBody = {
   selectedDiscordUserIds?: unknown;
   excludedSignatures?: unknown;

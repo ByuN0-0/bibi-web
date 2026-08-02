@@ -8,12 +8,28 @@ import {
   type TeamSession,
 } from "@/lib/lol/types";
 
-const SLOT_ROLES: Role[] = [
-  "TOP", "TOP", "JUNGLE", "JUNGLE", "MIDDLE", "MIDDLE",
-  "BOTTOM", "BOTTOM", "UTILITY", "UTILITY",
-];
+const ROLES: Role[] = ["TOP", "JUNGLE", "MIDDLE", "BOTTOM", "UTILITY"];
+const PLAYER_COUNT = 10;
+const FULL_PLAYER_MASK = (1 << PLAYER_COUNT) - 1;
 
-type Candidate = TeamComposition & {offRoleCount: number};
+type Candidate = {
+  signature: string;
+  slots: number[];
+  cost: number;
+  teamGap: number;
+  maxLaneGap: number;
+};
+
+type SearchContext = {
+  players: PlayerProfile[];
+  signals: number[][];
+  preferences: number[][];
+  repeatWeights: number[][];
+  recentCount: number;
+  minimumOffRoles: number;
+  minimumOffRoleMemo: number[][];
+  bestByTeamMask: Map<number, Candidate>;
+};
 
 export function balanceTeam(
   players: PlayerProfile[],
@@ -21,115 +37,214 @@ export function balanceTeam(
   excludedSignatures = new Set<string>(),
   random: () => number = Math.random,
 ): TeamComposition {
-  if (players.length !== 10) throw new Error("정확히 10명의 선수가 필요합니다.");
-  if (new Set(players.map((player) => player.discordUserId)).size !== 10) {
+  if (players.length !== PLAYER_COUNT) throw new Error("정확히 10명의 선수가 필요합니다.");
+  if (new Set(players.map((player) => player.discordUserId)).size !== PLAYER_COUNT) {
     throw new Error("중복된 선수가 포함되어 있습니다.");
   }
   const ordered = [...players].sort((left, right) =>
     left.discordUserId < right.discordUserId ? -1 : left.discordUserId > right.discordUserId ? 1 : 0,
   );
-  const bestBySignature = new Map<string, Candidate>();
-  const slots = new Array<PlayerProfile>(10);
-  const used = new Array<boolean>(10).fill(false);
-
-  const permute = (depth: number) => {
-    if (depth === 10) {
-      if (!isCanonical(slots)) return;
-      const candidate = evaluate(slots, recent);
-      const existing = bestBySignature.get(candidate.signature);
-      if (!existing || candidate.offRoleCount < existing.offRoleCount
-          || candidate.offRoleCount === existing.offRoleCount && candidate.cost < existing.cost) {
-        bestBySignature.set(candidate.signature, candidate);
-      }
-      return;
-    }
-    for (let index = 0; index < ordered.length; index += 1) {
-      if (used[index]) continue;
-      used[index] = true;
-      slots[depth] = ordered[index];
-      permute(depth + 1);
-      used[index] = false;
-    }
+  const signals = ordered.map((player) => ROLES.map((role) => signal(player, role)));
+  const preferences = ordered.map((player) => ROLES.map((role) => preferencePenalty(player, role)));
+  const minimumOffRoleMemo = Array.from({length: ROLES.length + 1}, () =>
+    new Array<number>(1 << PLAYER_COUNT).fill(-1));
+  const context: SearchContext = {
+    players: ordered,
+    signals,
+    preferences,
+    repeatWeights: buildRepeatWeights(ordered, recent),
+    recentCount: recent.length,
+    minimumOffRoles: 0,
+    minimumOffRoleMemo,
+    bestByTeamMask: new Map(),
   };
-  permute(0);
+  context.minimumOffRoles = minimumRemainingOffRoles(0, FULL_PLAYER_MASK, context);
+  pairRoles(0, FULL_PLAYER_MASK, new Array<number>(PLAYER_COUNT), 0, 0, 0, 0, context);
 
-  const candidates = [...bestBySignature.values()].sort((left, right) =>
-    left.offRoleCount - right.offRoleCount || left.cost - right.cost
+  let candidates = [...context.bestByTeamMask.values()].sort((left, right) =>
+    left.cost - right.cost
       || (left.signature < right.signature ? -1 : left.signature > right.signature ? 1 : 0),
   );
   if (!candidates.length) throw new Error("팀 조합을 계산할 수 없습니다.");
-  const minimumOffRoles = candidates[0].offRoleCount;
-  const preferredCandidates = candidates.filter((candidate) => candidate.offRoleCount === minimumOffRoles);
-  const best = preferredCandidates[0].cost;
-  const eligible = preferredCandidates
+  const best = candidates[0].cost;
+  candidates = candidates
     .filter((candidate) => candidate.cost <= best + 0.05)
     .filter((candidate) => !excludedSignatures.has(candidate.signature))
     .slice(0, 20);
-  if (!eligible.length) throw new Error("현재 조건에서 새로운 팀 조합이 없습니다.");
-  const {offRoleCount: _offRoleCount, ...composition} = weightedChoice(eligible, best, random);
-  void _offRoleCount;
-  return composition;
+  if (!candidates.length) throw new Error("현재 조건에서 새로운 팀 조합이 없습니다.");
+  return toComposition(weightedChoice(candidates, best, random), ordered);
 }
 
-function isCanonical(slots: PlayerProfile[]) {
-  const smallest = slots.reduce(
-    (value, player) => player.discordUserId < value ? player.discordUserId : value,
-    slots[0].discordUserId,
-  );
-  for (let index = 0; index < slots.length; index += 2) {
-    if (slots[index].discordUserId === smallest) return true;
+function minimumRemainingOffRoles(
+  roleIndex: number,
+  remainingMask: number,
+  context: SearchContext,
+): number {
+  if (roleIndex === ROLES.length) return 0;
+  const cached = context.minimumOffRoleMemo[roleIndex][remainingMask];
+  if (cached >= 0) return cached;
+  let minimum = PLAYER_COUNT + 1;
+  for (let first = 0; first < PLAYER_COUNT; first += 1) {
+    if (!(remainingMask & (1 << first))) continue;
+    for (let second = first + 1; second < PLAYER_COUNT; second += 1) {
+      if (!(remainingMask & (1 << second))) continue;
+      const nextMask = remainingMask & ~(1 << first) & ~(1 << second);
+      const offRoles = offRole(context.preferences[first][roleIndex])
+        + offRole(context.preferences[second][roleIndex])
+        + minimumRemainingOffRoles(roleIndex + 1, nextMask, context);
+      minimum = Math.min(minimum, offRoles);
+    }
   }
-  return false;
+  context.minimumOffRoleMemo[roleIndex][remainingMask] = minimum;
+  return minimum;
 }
 
-function evaluate(slots: PlayerProfile[], recent: TeamSession[]): Candidate {
-  let blueTotal = 0;
-  let redTotal = 0;
-  let laneGapTotal = 0;
-  let maxLaneGap = 0;
-  let preference = 0;
-  let offRoleCount = 0;
+function pairRoles(
+  roleIndex: number,
+  remainingMask: number,
+  pairs: number[],
+  offRoleCount: number,
+  laneGapTotal: number,
+  maxLaneGap: number,
+  preferenceTotal: number,
+  context: SearchContext,
+) {
+  if (roleIndex === ROLES.length) {
+    orientTeams(pairs, laneGapTotal, maxLaneGap, preferenceTotal, context);
+    return;
+  }
+  for (let first = 0; first < PLAYER_COUNT; first += 1) {
+    if (!(remainingMask & (1 << first))) continue;
+    for (let second = first + 1; second < PLAYER_COUNT; second += 1) {
+      if (!(remainingMask & (1 << second))) continue;
+      const nextMask = remainingMask & ~(1 << first) & ~(1 << second);
+      const nextOffRoleCount = offRoleCount
+        + offRole(context.preferences[first][roleIndex])
+        + offRole(context.preferences[second][roleIndex]);
+      if (nextOffRoleCount + minimumRemainingOffRoles(roleIndex + 1, nextMask, context)
+          > context.minimumOffRoles) continue;
+      pairs[roleIndex * 2] = first;
+      pairs[roleIndex * 2 + 1] = second;
+      const laneGap = Math.abs(context.signals[first][roleIndex] - context.signals[second][roleIndex]);
+      pairRoles(
+        roleIndex + 1,
+        nextMask,
+        pairs,
+        nextOffRoleCount,
+        laneGapTotal + laneGap,
+        Math.max(maxLaneGap, laneGap),
+        preferenceTotal + context.preferences[first][roleIndex] + context.preferences[second][roleIndex],
+        context,
+      );
+    }
+  }
+}
+
+function orientTeams(
+  pairs: number[],
+  laneGapTotal: number,
+  maxLaneGap: number,
+  preferenceTotal: number,
+  context: SearchContext,
+) {
+  for (let orientation = 0; orientation < 1 << ROLES.length; orientation += 1) {
+    let blueMask = 0;
+    let blueTotal = 0;
+    let redTotal = 0;
+    for (let roleIndex = 0; roleIndex < ROLES.length; roleIndex += 1) {
+      const swap = (orientation & (1 << roleIndex)) !== 0;
+      const blue = pairs[roleIndex * 2 + (swap ? 1 : 0)];
+      const red = pairs[roleIndex * 2 + (swap ? 0 : 1)];
+      blueMask |= 1 << blue;
+      blueTotal += context.signals[blue][roleIndex];
+      redTotal += context.signals[red][roleIndex];
+    }
+    // Swapping every blue and red player produces the same team composition.
+    if (!(blueMask & 1)) continue;
+    const teamGap = Math.abs(blueTotal - redTotal) / 5;
+    const repeat = repeatPenalty(blueMask, context.repeatWeights, context.recentCount);
+    const cost = 0.35 * teamGap + 0.30 * (laneGapTotal / 5)
+      + 0.15 * maxLaneGap + 0.15 * (preferenceTotal / PLAYER_COUNT) + 0.05 * repeat;
+    const existing = context.bestByTeamMask.get(blueMask);
+    if (existing && existing.cost <= cost) continue;
+    const slots = new Array<number>(PLAYER_COUNT);
+    for (let roleIndex = 0; roleIndex < ROLES.length; roleIndex += 1) {
+      const swap = (orientation & (1 << roleIndex)) !== 0;
+      slots[roleIndex * 2] = pairs[roleIndex * 2 + (swap ? 1 : 0)];
+      slots[roleIndex * 2 + 1] = pairs[roleIndex * 2 + (swap ? 0 : 1)];
+    }
+    context.bestByTeamMask.set(blueMask, {
+      signature: teamSignature(blueMask, context.players),
+      slots,
+      cost,
+      teamGap,
+      maxLaneGap,
+    });
+  }
+}
+
+function buildRepeatWeights(players: PlayerProfile[], recent: TeamSession[]) {
+  const result = Array.from({length: PLAYER_COUNT}, () => new Array<number>(PLAYER_COUNT).fill(0));
+  const indexById = new Map(players.map((player, index) => [player.discordUserId, index]));
+  recent.forEach((session) => {
+    [session.composition.blue, session.composition.red].forEach((team) => {
+      for (let left = 0; left < team.length; left += 1) {
+        const leftIndex = indexById.get(team[left].discordUserId);
+        if (leftIndex === undefined) continue;
+        for (let right = left + 1; right < team.length; right += 1) {
+          const rightIndex = indexById.get(team[right].discordUserId);
+          if (rightIndex !== undefined) {
+            const low = Math.min(leftIndex, rightIndex);
+            const high = Math.max(leftIndex, rightIndex);
+            result[low][high] += 1;
+          }
+        }
+      }
+    });
+  });
+  return result;
+}
+
+function repeatPenalty(blueMask: number, weights: number[][], recentCount: number) {
+  if (!recentCount) return 0;
+  let repeated = 0;
+  for (let left = 0; left < PLAYER_COUNT; left += 1) {
+    for (let right = left + 1; right < PLAYER_COUNT; right += 1) {
+      const sameTeam = Boolean(blueMask & (1 << left)) === Boolean(blueMask & (1 << right));
+      if (sameTeam) repeated += weights[left][right];
+    }
+  }
+  return repeated / (20 * recentCount);
+}
+
+function teamSignature(blueMask: number, players: PlayerProfile[]) {
+  const blue: string[] = [];
+  const red: string[] = [];
+  players.forEach((player, index) => (blueMask & (1 << index) ? blue : red).push(player.discordUserId));
+  const first = blue.join("-");
+  const second = red.join("-");
+  return first < second ? `${first}|${second}` : `${second}|${first}`;
+}
+
+function toComposition(candidate: Candidate, players: PlayerProfile[]): TeamComposition {
   const blue: TeamAssignment[] = [];
   const red: TeamAssignment[] = [];
-  for (let index = 0; index < slots.length; index += 2) {
-    const role = SLOT_ROLES[index];
-    const bluePlayer = slots[index];
-    const redPlayer = slots[index + 1];
-    const blueSignal = signal(bluePlayer, role);
-    const redSignal = signal(redPlayer, role);
-    blueTotal += blueSignal;
-    redTotal += redSignal;
-    const laneGap = Math.abs(blueSignal - redSignal);
-    laneGapTotal += laneGap;
-    maxLaneGap = Math.max(maxLaneGap, laneGap);
-    const bluePreference = preferencePenalty(bluePlayer, role);
-    const redPreference = preferencePenalty(redPlayer, role);
-    preference += bluePreference + redPreference;
-    if (bluePreference === 1) offRoleCount += 1;
-    if (redPreference === 1) offRoleCount += 1;
-    blue.push(assignment(bluePlayer, role));
-    red.push(assignment(redPlayer, role));
+  for (let roleIndex = 0; roleIndex < ROLES.length; roleIndex += 1) {
+    blue.push(assignment(players[candidate.slots[roleIndex * 2]], ROLES[roleIndex]));
+    red.push(assignment(players[candidate.slots[roleIndex * 2 + 1]], ROLES[roleIndex]));
   }
-  const teamGap = Math.abs(blueTotal - redTotal) / 5;
-  const averageLaneGap = laneGapTotal / 5;
-  const preferenceCost = preference / 10;
-  const signature = teamSignature(blue, red);
-  const repeat = repeatPenalty(blue, red, recent);
-  const cost = 0.35 * teamGap + 0.30 * averageLaneGap
-    + 0.15 * maxLaneGap + 0.15 * preferenceCost + 0.05 * repeat;
-  const balanceGrade = teamGap <= 0.03 && maxLaneGap <= 0.10
+  const balanceGrade = candidate.teamGap <= 0.03 && candidate.maxLaneGap <= 0.10
     ? "매우 균형"
-    : teamGap <= 0.06 && maxLaneGap <= 0.18 ? "균형" : "보통";
+    : candidate.teamGap <= 0.06 && candidate.maxLaneGap <= 0.18 ? "균형" : "보통";
   return {
     algorithmVersion: ALGORITHM_VERSION,
-    signature,
+    signature: candidate.signature,
     blue,
     red,
-    cost,
-    teamGap,
-    maxLaneGap,
+    cost: candidate.cost,
+    teamGap: candidate.teamGap,
+    maxLaneGap: candidate.maxLaneGap,
     balanceGrade,
-    offRoleCount,
   };
 }
 
@@ -143,6 +258,8 @@ function preferencePenalty(player: PlayerProfile, role: Role) {
   return 1;
 }
 
+const offRole = (preference: number) => preference === 1 ? 1 : 0;
+
 function assignment(player: PlayerProfile, role: Role): TeamAssignment {
   const stats = player.roleStats?.[role];
   const rank = player.soloRank?.tier !== "UNRANKED" ? player.soloRank : player.flexRank;
@@ -154,39 +271,6 @@ function assignment(player: PlayerProfile, role: Role): TeamAssignment {
     offRole: preferencePenalty(player, role) === 1,
     lowConfidence: !stats || stats.confidence < 0.6,
   };
-}
-
-function repeatPenalty(blue: TeamAssignment[], red: TeamAssignment[], recent: TeamSession[]) {
-  if (!recent.length) return 0;
-  const current = teammatePairs(blue, red);
-  let repeated = 0;
-  recent.forEach((session) => {
-    const previous = teammatePairs(session.composition.blue, session.composition.red);
-    current.forEach((pair) => {
-      if (previous.has(pair)) repeated += 1;
-    });
-  });
-  return repeated / (20 * recent.length);
-}
-
-function teammatePairs(blue: TeamAssignment[], red: TeamAssignment[]) {
-  const result = new Set<string>();
-  [blue, red].forEach((team) => {
-    for (let left = 0; left < team.length; left += 1) {
-      for (let right = left + 1; right < team.length; right += 1) {
-        const one = team[left].discordUserId;
-        const two = team[right].discordUserId;
-        result.add(one < two ? `${one}:${two}` : `${two}:${one}`);
-      }
-    }
-  });
-  return result;
-}
-
-function teamSignature(blue: TeamAssignment[], red: TeamAssignment[]) {
-  const first = blue.map((player) => player.discordUserId).sort().join("-");
-  const second = red.map((player) => player.discordUserId).sort().join("-");
-  return first < second ? `${first}|${second}` : `${second}|${first}`;
 }
 
 function weightedChoice(candidates: Candidate[], best: number, random: () => number) {

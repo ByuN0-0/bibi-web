@@ -13,18 +13,21 @@ export async function generateTeamComposition(
   selectedDiscordUserIds: string[],
   excludedSignatures: string[] = [],
 ) {
-  const status = await latestSystemStatus();
+  if (selectedDiscordUserIds.length !== 10 || new Set(selectedDiscordUserIds).size !== 10) {
+    throw new TeamGenerationError("선수를 정확히 10명 선택해 주세요.", 400);
+  }
+  const [status, allPlayers, recentSessions] = await Promise.all([
+    latestSystemStatus(),
+    listPlayers(),
+    listRecentSessions(5),
+  ]);
   if (!status || status.algorithmVersion !== ALGORITHM_VERSION) {
     throw new TeamGenerationError(
       "Java 봇과 웹의 팀 편성 알고리즘 버전이 일치하지 않습니다.",
       409,
     );
   }
-  if (selectedDiscordUserIds.length !== 10 || new Set(selectedDiscordUserIds).size !== 10) {
-    throw new TeamGenerationError("선수를 정확히 10명 선택해 주세요.", 400);
-  }
-
-  const byId = new Map((await listPlayers()).map((player) => [player.discordUserId, player]));
+  const byId = new Map(allPlayers.map((player) => [player.discordUserId, player]));
   const players = selectedDiscordUserIds.map((id) => byId.get(id));
   if (players.some((player) => !player)) {
     throw new TeamGenerationError("미등록 선수가 포함되어 있습니다.", 400);
@@ -39,7 +42,7 @@ export async function generateTeamComposition(
 
   return balanceTeam(
     players as NonNullable<(typeof players)[number]>[],
-    await listRecentSessions(5),
+    recentSessions,
     new Set(excludedSignatures.slice(0, 20)),
   );
 }

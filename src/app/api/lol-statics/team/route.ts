@@ -11,6 +11,8 @@ import {
 } from "@/lib/lol/team-generator";
 import {ALGORITHM_VERSION, type TeamDraft} from "@/lib/lol/types";
 
+export const maxDuration = 60;
+
 type RequestBody = {
   action?: "generate" | "reroll" | "confirm";
   selectedDiscordUserIds?: string[];
