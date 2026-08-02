@@ -4,7 +4,7 @@ import Link from "next/link";
 const links = [
   {href: "/", label: "홈"},
   {href: "/#commands", label: "명령어"},
-  {href: "/lol-member", label: "롤 팀 편성"},
+  {href: "/lol-member", label: "롤 내전"},
   {href: "/lol-statics/login", label: "관리자"},
 ];
 

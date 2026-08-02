@@ -162,6 +162,9 @@ export type LolAssetRef = {
   iconPath: string;
 };
 
+export const DATA_DRAGON_ASSET_KINDS = ["champions", "items", "perks", "spells"] as const;
+export type DataDragonAssetKind = (typeof DATA_DRAGON_ASSET_KINDS)[number];
+
 export type MatchObjectives = {
   turretsDestroyed: number;
   inhibitorsDestroyed: number;
@@ -236,6 +239,15 @@ export type MatchResult = {
   corrections: MatchResultCorrection[];
   createdAt: number;
   updatedAt: number;
+};
+
+export type PublicMatchResultParticipant = Omit<MatchResultParticipant, "discordUserId">;
+
+export type PublicMatchResult = Pick<
+  MatchResult,
+  "matchResultId" | "playedOn" | "winner" | "durationSeconds" | "ddragonVersion" | "teamStats"
+> & {
+  participants: PublicMatchResultParticipant[];
 };
 
 export type SystemStatus = {

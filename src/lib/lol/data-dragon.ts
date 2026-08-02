@@ -1,4 +1,4 @@
-import type {LolAssetRef, MatchResultParticipant, MatchResultTeamStats} from "@/lib/lol/types";
+import type {DataDragonAssetKind, LolAssetRef, MatchResultParticipant, MatchResultTeamStats} from "@/lib/lol/types";
 import {MatchResultError} from "@/lib/lol/match-result";
 export {dataDragonIconUrl} from "@/lib/lol/data-dragon-url";
 
@@ -33,6 +33,11 @@ export async function validateDataDragonReferences(input: {
     if (participant.trinket) assertCanonical(participant.trinket, catalog.items, `participants[${index}].trinket`);
     if (participant.questSlot) assertCanonical(participant.questSlot, catalog.items, `participants[${index}].questSlot`);
   }
+}
+
+export async function listDataDragonAssets(version: string, kind: DataDragonAssetKind): Promise<LolAssetRef[]> {
+  const catalog = await loadCatalog(version);
+  return [...catalog[kind].values()].sort((left, right) => left.name.localeCompare(right.name, "ko"));
 }
 
 async function loadCatalog(version: string): Promise<DataDragonCatalog> {

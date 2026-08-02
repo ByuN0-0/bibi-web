@@ -1,6 +1,6 @@
 "use client";
 
-import {useMemo, useState} from "react";
+import {useMemo, useRef, useState} from "react";
 import {rankTierDisplay, ROLE_LABEL, type PlayerProfile, type TeamAssignment, type TeamDraft} from "@/lib/lol/types";
 
 export default function TeamBuilder({players, publicMode = false}: {players: PlayerProfile[]; publicMode?: boolean}) {
@@ -8,6 +8,8 @@ export default function TeamBuilder({players, publicMode = false}: {players: Pla
   const [draft, setDraft] = useState<TeamDraft | null>(null);
   const [pending, setPending] = useState(false);
   const [error, setError] = useState("");
+  const [mobileListCollapsed, setMobileListCollapsed] = useState(false);
+  const resultRef = useRef<HTMLDivElement>(null);
   const selectedSet = useMemo(() => new Set(selected), [selected]);
 
   function toggle(player: PlayerProfile) {
@@ -53,6 +55,10 @@ export default function TeamBuilder({players, publicMode = false}: {players: Pla
           updatedAt: now,
         });
       } else setDraft(result.draft);
+      if (action !== "confirm") {
+        setMobileListCollapsed(true);
+        window.requestAnimationFrame(() => resultRef.current?.scrollIntoView({behavior: "smooth", block: "start"}));
+      }
     } catch {
       setError("팀 편성 서버에 연결하지 못했습니다. 잠시 후 다시 시도해 주세요.");
     } finally {
@@ -72,7 +78,8 @@ export default function TeamBuilder({players, publicMode = false}: {players: Pla
             {selected.length} / 10
           </span>
         </div>
-        <div className="mt-5 grid gap-2 sm:grid-cols-2">
+        {mobileListCollapsed && draft?.composition && <div className="mt-5 flex items-center justify-between rounded-xl bg-[var(--surface-soft)] p-3 sm:hidden"><p className="text-sm font-semibold">10명 선택 완료</p><button type="button" onClick={() => setMobileListCollapsed(false)} className="text-xs font-bold text-[var(--primary)]">선수 변경</button></div>}
+        <div className={`mt-5 gap-2 sm:grid sm:grid-cols-2 ${mobileListCollapsed && draft?.composition ? "hidden" : "grid"}`}>
           {players.map((player) => {
             const active = selectedSet.has(player.discordUserId);
             const ready = player.syncStatus === "READY";
@@ -98,7 +105,7 @@ export default function TeamBuilder({players, publicMode = false}: {players: Pla
           })}
           {!players.length && <p className="col-span-full rounded-xl border border-dashed border-[var(--hairline)] bg-[var(--surface-soft)] p-8 text-center text-sm text-[var(--muted)]">등록된 선수가 없습니다.</p>}
         </div>
-        <div className="mt-5 flex flex-wrap gap-2">
+        <div className={`mt-5 flex flex-wrap gap-2 ${publicMode ? "max-sm:hidden" : ""}`}>
           <button disabled={pending || selected.length !== 10 || draft?.status === "CONFIRMED"} onClick={() => act("generate")} className="primary-button">팀 생성</button>
           <button disabled={pending || !draft || draft.status === "CONFIRMED"} onClick={() => act("reroll")} className="secondary-button">다시 편성</button>
           {!publicMode && <button disabled={pending || !draft || draft.status === "CONFIRMED"} onClick={() => act("confirm")} className="secondary-button border-[#8bc9ad] text-[var(--success)]">확정</button>}
@@ -107,7 +114,7 @@ export default function TeamBuilder({players, publicMode = false}: {players: Pla
         {error && <p role="alert" className="mt-4 rounded-xl border border-[#f2b8aa] bg-[var(--error-soft)] px-4 py-3 text-sm text-[var(--error)]">{error}</p>}
       </div>
 
-      <div className="surface-card p-5 sm:p-6">
+      <div ref={resultRef} className="surface-card scroll-mt-24 p-5 sm:p-6">
         {!draft?.composition ? (
           <div className="grid min-h-96 place-items-center text-center">
             <div>
@@ -132,6 +139,7 @@ export default function TeamBuilder({players, publicMode = false}: {players: Pla
           </div>
         )}
       </div>
+      {publicMode && <div className="fixed inset-x-0 bottom-0 z-40 border-t border-[var(--hairline)] bg-white/95 px-4 py-3 shadow-[0_-8px_24px_rgba(0,0,0,0.08)] backdrop-blur sm:hidden"><div className="mx-auto flex max-w-md items-center gap-3"><div className="min-w-20"><p className="text-[10px] text-[var(--muted)]">선택 선수</p><p className="text-sm font-bold">{selected.length} / 10명</p></div><button disabled={pending || selected.length !== 10} onClick={() => act(draft ? "reroll" : "generate")} className="primary-button flex-1">{pending ? "계산 중…" : draft ? "다시 편성" : selected.length === 10 ? "팀 생성" : `${10 - selected.length}명 더 선택`}</button></div></div>}
     </section>
   );
 }

@@ -2,7 +2,7 @@ import {beforeEach, describe, expect, it, vi} from "vitest";
 
 vi.mock("server-only", () => ({}));
 
-import {dataDragonIconUrl, validateDataDragonReferences} from "@/lib/lol/data-dragon";
+import {dataDragonIconUrl, listDataDragonAssets, validateDataDragonReferences} from "@/lib/lol/data-dragon";
 
 const version = "16.15.1";
 const champion = {id: "Ahri", name: "아리", iconPath: "img/champion/Ahri.png"};
@@ -30,6 +30,10 @@ describe("Data Dragon references", () => {
     await expect(validateDataDragonReferences(payload())).resolves.toBeUndefined();
     expect(dataDragonIconUrl(version, champion.iconPath)).toBe(`https://ddragon.leagueoflegends.com/cdn/${version}/img/champion/Ahri.png`);
     expect(dataDragonIconUrl(version, perk.iconPath)).toBe(`https://ddragon.leagueoflegends.com/cdn/img/${perk.iconPath}`);
+  });
+
+  it("exposes a sorted serializable asset catalog", async () => {
+    await expect(listDataDragonAssets(version, "champions")).resolves.toEqual([champion]);
   });
 
   it("rejects mismatched names or paths", async () => {

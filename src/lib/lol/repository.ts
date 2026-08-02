@@ -369,6 +369,16 @@ export async function listMatchResults(): Promise<MatchResult[]> {
     .sort((left, right) => right.playedOn.localeCompare(left.playedOn) || right.createdAt - left.createdAt);
 }
 
+export async function listMatchResultsPage(offset: number, limit: number): Promise<{
+  results: MatchResult[];
+  nextOffset: number | null;
+}> {
+  const all = await listMatchResults();
+  const results = all.slice(offset, offset + limit);
+  const next = offset + results.length;
+  return {results, nextOffset: next < all.length ? next : null};
+}
+
 export async function findMatchResult(matchResultId: string) {
   await ensureCollection(COLLECTIONS.matchResults);
   return findOne<MatchResult>(COLLECTIONS.matchResults, {matchResultId});

@@ -1,5 +1,5 @@
 import LolIcon from "@/app/components/LolIcon";
-import type {MatchObjectives, MatchResult, MatchResultParticipant, MatchResultTeamStats, MatchTeam} from "@/lib/lol/types";
+import type {MatchObjectives, MatchResult, MatchResultParticipant, MatchResultTeamStats, MatchTeam, PublicMatchResult, PublicMatchResultParticipant} from "@/lib/lol/types";
 
 const OBJECTIVES: Array<[keyof MatchObjectives, string]> = [
   ["turretsDestroyed", "포탑"],
@@ -10,7 +10,9 @@ const OBJECTIVES: Array<[keyof MatchObjectives, string]> = [
   ["voidGrubKills", "공허 유충"],
 ];
 
-export default function LolMatchScoreboard({result, compact = false}: {result: MatchResult; compact?: boolean}) {
+type ScoreboardParticipant = MatchResultParticipant | PublicMatchResultParticipant;
+
+export default function LolMatchScoreboard({result, compact = false}: {result: MatchResult | PublicMatchResult; compact?: boolean}) {
   return (
     <div className={compact ? "space-y-3" : "space-y-6"}>
       {(["BLUE", "RED"] as const).map((team) => (
@@ -33,7 +35,7 @@ function TeamScoreboard({team, winner, version, stats, participants, compact}: {
   winner: boolean;
   version: string;
   stats: MatchResultTeamStats;
-  participants: MatchResultParticipant[];
+  participants: ScoreboardParticipant[];
   compact: boolean;
 }) {
   const blue = team === "BLUE";
@@ -69,7 +71,7 @@ function TeamScoreboard({team, winner, version, stats, participants, compact}: {
   );
 }
 
-function DesktopPlayerRow({participant, version, compact}: {participant: MatchResultParticipant; version: string; compact: boolean}) {
+function DesktopPlayerRow({participant, version, compact}: {participant: ScoreboardParticipant; version: string; compact: boolean}) {
   const iconSize = compact ? 32 : 38;
   return (
     <tr className="border-t border-[var(--hairline-soft)] bg-white">
@@ -83,7 +85,7 @@ function DesktopPlayerRow({participant, version, compact}: {participant: MatchRe
   );
 }
 
-function MobilePlayerCard({participant, version, compact}: {participant: MatchResultParticipant; version: string; compact: boolean}) {
+function MobilePlayerCard({participant, version, compact}: {participant: ScoreboardParticipant; version: string; compact: boolean}) {
   return (
     <article className={`bg-white ${compact ? "p-3" : "p-4"}`}>
       <div className="flex items-start justify-between gap-3"><div className="flex items-center gap-3"><LolIcon asset={participant.champion} version={version} size={compact ? 36 : 42} /><div><p className="text-sm font-semibold">Lv.{participant.level} {participant.observedName}</p><p className="text-[10px] text-[var(--muted)]">{participant.champion.name}{participant.guest ? " · 게스트" : ""}</p></div></div><p className="text-sm font-bold">{participant.kills}/{participant.deaths}/{participant.assists}</p></div>
@@ -93,6 +95,6 @@ function MobilePlayerCard({participant, version, compact}: {participant: MatchRe
   );
 }
 
-function Inventory({participant, version, size = 28}: {participant: MatchResultParticipant; version: string; size?: number}) {
+function Inventory({participant, version, size = 28}: {participant: ScoreboardParticipant; version: string; size?: number}) {
   return <div className="flex gap-1">{participant.items.map((item, index) => <LolIcon key={index} asset={item} version={version} size={size} />)}<span className="mx-0.5 border-l border-[var(--hairline)]" /><LolIcon asset={participant.trinket} version={version} size={size} /><LolIcon asset={participant.questSlot} version={version} size={size} /></div>;
 }

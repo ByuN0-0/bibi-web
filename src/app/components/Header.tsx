@@ -4,8 +4,7 @@ import Link from "next/link";
 const navigation = [
   {href: "/#features", label: "기능"},
   {href: "/#commands", label: "명령어"},
-  {href: "/lol-member", label: "롤 팀 편성"},
-  {href: "/lol-history", label: "내전 기록"},
+  {href: "/lol-member", label: "롤 내전"},
 ];
 
 export default function Header() {
