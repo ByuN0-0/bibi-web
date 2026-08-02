@@ -7,6 +7,16 @@ description: Load bibi-web's registered-player catalog, analyze a Korean League 
 
 Store one standard Korean LoL post-game scoreboard screenshot as structured match data without uploading the image itself.
 
+## Fast local upload
+
+When the user explicitly asks to accept deterministic low-confidence suggestions and correct mistakes later in the admin web UI, run the local reader and commit in one command:
+
+```bash
+npm run lol:ingest-scoreboard -- scoreboard.png --output resolved.json --report-output report.json
+```
+
+This command loads the cached player catalog, performs mechanical OCR and asset matching locally, writes the resolved JSON, and sends one `commit` request. The commit endpoint performs the same schema, totals, role, and Data Dragon validation before any database write. Low-confidence suggestions are reported but do not block this explicitly requested fast path. Use `--validate-only` when a database write is not authorized.
+
 ## Required workflow
 
 1. Read `references/payload-schema.md` before extracting values.
@@ -51,7 +61,7 @@ Store one standard Korean LoL post-game scoreboard screenshot as structured matc
 
 - Read credentials only from `BIBI_WEB_BASE_URL` and `BIBI_INGEST_TOKEN` environment variables.
 - Never print, persist, pass as a CLI argument, or include the token in an error message.
-- Never commit after a failed validation, ambiguous image match, or missing user confirmation.
+- Never commit after failed server validation or missing user confirmation. Ambiguous image matches may be committed only when the user explicitly requests the fast local upload path and accepts correcting recognition mistakes in the admin UI.
 - Never change `ingestionId` between validation and commit.
 - Never store the screenshot in bibi-web or Oracle SODA.
 - Treat the API response as authoritative for registered-player and guest mapping. Match records are independent of confirmed team sessions.

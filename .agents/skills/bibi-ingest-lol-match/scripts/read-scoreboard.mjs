@@ -15,6 +15,7 @@ import {
   parseDate,
   parseDuration,
   parseInteger,
+  participantRowOffsets,
   REFERENCE_ROWS,
   repairMissingParticipantTotals,
   validateMechanicalTotals,
@@ -64,6 +65,7 @@ export async function readScoreboardImage(original, options = {}) {
       allowAmbiguous: options.allowAmbiguous ?? true,
       itemGridLeft: layout.source.itemGridLeft,
       itemSlotGap: layout.source.itemSlotGap,
+      rowOffsets: participantRowOffsets(layout),
     });
     resolvedPayload = resolved.payload;
     report.assets = resolved.assets;
@@ -213,7 +215,7 @@ async function runCli() {
   if (!screenshotPath || screenshotPath.startsWith("--")) usage();
   const original = await readFile(screenshotPath);
   const result = await readScoreboardImage(original, {
-    players: await loadPlayers(option(argv, "--players")),
+    players: await loadRegisteredPlayers(option(argv, "--players")),
     resolveAssets: !argv.includes("--no-resolve"),
     allowAmbiguous: !argv.includes("--strict-assets"),
   });
@@ -282,7 +284,7 @@ async function occupied(buffer, rectangle) {
   return Math.max(...deviations) >= 12 || Math.max(...means) >= 32;
 }
 
-async function loadPlayers(path) {
+export async function loadRegisteredPlayers(path) {
   if (path) {
     const parsed = JSON.parse(await readFile(path, "utf8"));
     return Array.isArray(parsed) ? parsed : parsed.players ?? [];

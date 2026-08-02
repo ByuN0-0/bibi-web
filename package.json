@@ -7,7 +7,8 @@
     "build": "next build",
     "start": "next start",
     "lint": "eslint .",
-    "test": "vitest run"
+    "test": "vitest run",
+    "lol:ingest-scoreboard": "node --env-file=.env .agents/skills/bibi-ingest-lol-match/scripts/ingest-scoreboard.mjs"
   },
   "dependencies": {
     "@tesseract.js-data/eng": "^1.0.0",

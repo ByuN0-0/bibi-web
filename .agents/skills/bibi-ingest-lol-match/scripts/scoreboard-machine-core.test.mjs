@@ -6,12 +6,14 @@ import {
   parseDate,
   parseDuration,
   parseInteger,
+  participantRowOffsets,
   repairMissingParticipantTotals,
   roleFromQuest,
   selectSpellQuestCombination,
   selectTeamSpellQuestAssignments,
   validateMechanicalTotals,
 } from "./scoreboard-machine-core.mjs";
+import {participantAssetCoordinates} from "./resolve-ddragon-assets.mjs";
 
 describe("scoreboard machine parsing", () => {
   it("normalizes common OCR substitutions", () => {
@@ -41,8 +43,8 @@ describe("scoreboard machine parsing", () => {
   it("derives one missing player total from the visible team total", () => {
     const participants = Array.from({length: 5}, (_, index) => ({team: "RED", kills: index + 1, deaths: 2, assists: index ? index + 3 : null, goldEarned: 1000}));
     const teamStats = [{team: "RED", kills: 15, deaths: 10, assists: 30, goldTotal: 5000}];
-    expect(repairMissingParticipantTotals(teamStats, participants)).toEqual([{team: "RED", participantIndex: 0, field: "assists", value: 12}]);
-    expect(participants[0].assists).toBe(12);
+    expect(repairMissingParticipantTotals(teamStats, participants)).toEqual([{team: "RED", participantIndex: 0, field: "assists", value: 8}]);
+    expect(participants[0].assists).toBe(8);
     expect(validateMechanicalTotals(teamStats, participants)).toEqual([]);
   });
 });
@@ -115,6 +117,17 @@ describe("summoner spell and quest constraints", () => {
 });
 
 describe("scoreboard anchor detection", () => {
+  it("crops the portrait center and both spell interiors without their gold frame", () => {
+    expect(participantAssetCoordinates(207)).toEqual({
+      champion: {left: 92, top: 191, width: 32, height: 32},
+      perk: {left: 18, top: 197, width: 20, height: 20},
+      spells: [
+        {left: 43, top: 195, width: 11, height: 11},
+        {left: 43, top: 208, width: 11, height: 11},
+      ],
+    });
+  });
+
   it("finds the canonical row and item grid from fixed gold borders", () => {
     const channels = 3;
     const data = new Uint8Array(CANVAS.width * CANVAS.height * channels);
@@ -163,5 +176,20 @@ describe("scoreboard anchor detection", () => {
     expect(sourceBlueCenter * layout.transform.yScale + layout.transform.yOffset).toBeCloseTo(207, 5);
     expect(sourceRedCenter * layout.transform.yScale + layout.transform.yOffset).toBeCloseTo(422, 5);
     expect(layout.source.itemGridLeft * layout.transform.xScale + layout.transform.xOffset).toBeCloseTo(281, 5);
+    expect(participantRowOffsets(layout)).toEqual({
+      BLUE: [0, 0, 0, 0, 0],
+      RED: [0, 0, 0, 0, 0],
+    });
+  });
+
+  it("corrects per-row rounding drift after global scoreboard alignment", () => {
+    const layout = {
+      source: {blueTop: 190, redTop: 407, rowGap: 35, cellHeight: 24},
+      transform: {yScale: 215 / 217, yOffset: 207 - 202 * (215 / 217)},
+    };
+    expect(participantRowOffsets(layout)).toEqual({
+      BLUE: [0, 0, -1, -1, -1],
+      RED: [0, 0, -1, -1, -1],
+    });
   });
 });

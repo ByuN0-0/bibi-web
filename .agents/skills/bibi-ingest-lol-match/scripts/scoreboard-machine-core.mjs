@@ -171,6 +171,21 @@ export function validateMechanicalTotals(teamStats, participants) {
   return errors;
 }
 
+export function participantRowOffsets(layout) {
+  const {source, transform} = layout;
+  const offsets = {};
+  for (const team of ["BLUE", "RED"]) {
+    const firstTop = team === "BLUE" ? source.blueTop : source.redTop;
+    offsets[team] = REFERENCE_ROWS[team].map((referenceRow, index) => {
+      const sourceCenter = firstTop + source.cellHeight / 2 + index * source.rowGap;
+      const alignedCenter = sourceCenter * transform.yScale + transform.yOffset;
+      const rounded = Math.round(alignedCenter - referenceRow);
+      return Object.is(rounded, -0) ? 0 : rounded;
+    });
+  }
+  return offsets;
+}
+
 export function repairMissingParticipantTotals(teamStats, participants) {
   const repairs = [];
   const fields = [["kills", "kills"], ["deaths", "deaths"], ["assists", "assists"], ["goldTotal", "goldEarned"]];

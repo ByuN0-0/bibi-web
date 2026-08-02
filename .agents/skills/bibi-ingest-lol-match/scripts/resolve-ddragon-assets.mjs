@@ -16,6 +16,7 @@ let offsetY;
 let banOffsetY;
 let itemGridLeft;
 let itemSlotGap;
+let rowOffsets;
 let allowAmbiguous;
 let payload;
 let version;
@@ -32,6 +33,7 @@ export async function resolveDataDragonAssets(input, options = {}) {
   banOffsetY = options.banOffsetY ?? offsetY;
   itemGridLeft = options.itemGridLeft ?? 281;
   itemSlotGap = options.itemSlotGap ?? 25;
+  rowOffsets = options.rowOffsets ?? {};
   allowAmbiguous = options.allowAmbiguous ?? false;
   payload = structuredClone(input);
   screenshot = options.screenshot ?? null;
@@ -83,10 +85,12 @@ export async function resolveDataDragonAssets(input, options = {}) {
     if (!(participant.team in teamRowIndex)) fail(`participants[${index}].team must be BLUE or RED.`);
     const teamOffset = teamRowIndex[participant.team]++;
     if (teamOffset > 4) fail(`${participant.team} contains more than five participant rows.`);
-    const row = (participant.team === "BLUE" ? [207, 242, 277, 312, 347] : [422, 457, 492, 527, 562])[teamOffset] + offsetY;
-    participant.champion = await resolveValue(participant.champion, "champion", `participants[${index}].champion`, {left: 89, top: row - 16, width: 32, height: 32});
-    participant.primaryPerk = await resolveValue(participant.primaryPerk, "perk", `participants[${index}].primaryPerk`, {left: 18, top: row - 10, width: 20, height: 20});
-    participant.summonerSpells = await resolveSlots(participant.summonerSpells, "spell", `participants[${index}].summonerSpells`, [{left: 43, top: row - 12, width: 11, height: 11}, {left: 43, top: row + 3, width: 11, height: 11}], false);
+    const referenceRow = (participant.team === "BLUE" ? [207, 242, 277, 312, 347] : [422, 457, 492, 527, 562])[teamOffset];
+    const row = referenceRow + offsetY + (rowOffsets[participant.team]?.[teamOffset] ?? 0);
+    const assetCoordinates = participantAssetCoordinates(row);
+    participant.champion = await resolveValue(participant.champion, "champion", `participants[${index}].champion`, assetCoordinates.champion);
+    participant.primaryPerk = await resolveValue(participant.primaryPerk, "perk", `participants[${index}].primaryPerk`, assetCoordinates.perk);
+    participant.summonerSpells = await resolveSlots(participant.summonerSpells, "spell", `participants[${index}].summonerSpells`, assetCoordinates.spells, false);
     const inventory = inventoryCoordinates(row);
     participant.items = await resolveSlots(participant.items, "item", `participants[${index}].items`, inventory.items, true);
     participant.trinket = await resolveNullable(participant.trinket, "trinket", `participants[${index}].trinket`, inventory.trinket);
@@ -318,6 +322,20 @@ function applyTeamSpellQuestConstraints(team) {
   }
 }
 function banCoordinates(team) { const top = (team === "BLUE" ? 198 : 413) + banOffsetY; return [[845, top], [910, top], [975, top], [845, top + 35], [910, top + 35]].map(([left, y]) => ({left, top: y, width: 24, height: 24})); }
+export function participantAssetCoordinates(row) {
+  return {
+    // The portrait's visible circle is centered at x=108. The old x=89 crop
+    // clipped its right edge and compared three columns of empty background.
+    champion: {left: 92, top: row - 16, width: 32, height: 32},
+    perk: {left: 18, top: row - 10, width: 20, height: 20},
+    // Each spell's 11px artwork sits inside a shared gold frame. The second
+    // icon starts at row+1; row+3 included its lower frame and page background.
+    spells: [
+      {left: 43, top: row - 12, width: 11, height: 11},
+      {left: 43, top: row + 1, width: 11, height: 11},
+    ],
+  };
+}
 function inventoryCoordinates(row) {
   const standardInset = Math.max(2, Math.round(itemSlotGap * 3 / 25));
   const questInset = Math.round(itemSlotGap * 9 / 25) + 2;
