@@ -167,19 +167,11 @@ export async function deletePlayer(discordUserId: string) {
   await Promise.all([
     ensureCollection(COLLECTIONS.sessions),
     ensureCollection(COLLECTIONS.drafts),
-    ensureCollection(COLLECTIONS.matchResults),
   ]);
   const sessions = await soda.list<TeamSession>(COLLECTIONS.sessions);
   const drafts = await soda.list<TeamDraft>(COLLECTIONS.drafts);
-  const resultSessionIds = new Set(
-    (await soda.list<MatchResult>(COLLECTIONS.matchResults))
-      .map((document) => document.value.sessionId),
-  );
   await Promise.all([
-    ...sessions.filter((document) => (
-      hasPlayer(document.value, discordUserId)
-      && !resultSessionIds.has(document.value.sessionId)
-    ))
+    ...sessions.filter((document) => hasPlayer(document.value, discordUserId))
       .map((document) => soda.delete(COLLECTIONS.sessions, document)),
     ...drafts.filter((document) => document.value.selectedDiscordUserIds.includes(discordUserId))
       .map((document) => soda.delete(COLLECTIONS.drafts, document)),
@@ -227,12 +219,8 @@ export async function findMatchResultByIngestionId(ingestionId: string) {
 
 export async function saveMatchResult(result: MatchResult) {
   await ensureCollection(COLLECTIONS.matchResults);
-  const [sameIngestion, sameSession] = await Promise.all([
-    findOne<MatchResult>(COLLECTIONS.matchResults, {ingestionId: result.ingestionId}),
-    findOne<MatchResult>(COLLECTIONS.matchResults, {sessionId: result.sessionId}),
-  ]);
+  const sameIngestion = await findOne<MatchResult>(COLLECTIONS.matchResults, {ingestionId: result.ingestionId});
   if (sameIngestion) return {created: false as const, result: sameIngestion.value};
-  if (sameSession) throw new Error("MATCH_RESULT_SESSION_CONFLICT");
   await soda.insert(COLLECTIONS.matchResults, result);
   return {created: true as const, result};
 }

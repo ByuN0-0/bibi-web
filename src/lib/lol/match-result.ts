@@ -7,11 +7,9 @@ import type {
   MatchResultTeamStats,
   MatchTeam,
   PlayerProfile,
-  TeamSession,
 } from "@/lib/lol/types";
 import {MATCH_TEAMS} from "@/lib/lol/types";
 
-const SESSION_WINDOW_MS = 7 * 24 * 60 * 60 * 1000;
 const ASSET_PATH = /^(?:img\/(?:champion|item|spell)\/[A-Za-z0-9_.-]+\.png|perk-images\/[A-Za-z0-9_./-]+\.png)$/;
 const OBJECTIVE_FIELDS = [
   "turretsDestroyed",
@@ -37,7 +35,6 @@ export type ParsedMatchResultInput = {
 export type PreparedMatchResult = {
   input: ParsedMatchResultInput;
   participants: MatchResultParticipant[];
-  session: TeamSession;
   sourceHash: string;
   guestCount: number;
 };
@@ -84,16 +81,11 @@ export function parseMatchResultInput(input: unknown): ParsedMatchResultInput {
 export function prepareMatchResult(
   input: ParsedMatchResultInput,
   players: PlayerProfile[],
-  sessions: TeamSession[],
-  results: MatchResult[],
-  now = Date.now(),
 ): PreparedMatchResult {
   const participants = resolveParticipants(input.participants, players);
-  const session = selectSession(participants, sessions, results, now);
   return {
     input,
     participants,
-    session,
     sourceHash: matchResultSourceHash(input),
     guestCount: participants.filter((participant) => participant.guest).length,
   };
@@ -101,11 +93,10 @@ export function prepareMatchResult(
 
 export function createMatchResult(prepared: PreparedMatchResult, now = Date.now()): MatchResult {
   return {
-    schemaVersion: 2,
+    schemaVersion: 3,
     matchResultId: crypto.randomUUID(),
     ingestionId: prepared.input.ingestionId,
     sourceHash: prepared.sourceHash,
-    sessionId: prepared.session.sessionId,
     source: "CHAT_SCREENSHOT",
     playedOn: prepared.input.playedOn,
     winner: prepared.input.winner,
@@ -305,30 +296,6 @@ function resolveParticipants(participants: ParsedMatchParticipant[], players: Pl
     if (discordUserId) used.add(discordUserId);
     return {...participant, discordUserId, guest: !discordUserId};
   });
-}
-
-function selectSession(participants: MatchResultParticipant[], sessions: TeamSession[], results: MatchResult[], now: number): TeamSession {
-  const registered = new Set(participants.flatMap((participant) => participant.discordUserId ?? []));
-  const candidates = sessions
-    .filter((session) => session.confirmedAt <= now && session.confirmedAt >= now - SESSION_WINDOW_MS)
-    .map((session) => ({
-      session,
-      score: [...session.composition.blue, ...session.composition.red]
-        .filter((assignment) => registered.has(assignment.discordUserId)).length,
-    }))
-    .filter((candidate) => candidate.score >= 8);
-  if (!candidates.length) {
-    throw new MatchResultError("최근 7일 내 참가자 8명 이상이 일치하는 확정 팀 기록을 찾지 못했습니다.", 409, "MATCH_SESSION_NOT_FOUND");
-  }
-  const topScore = Math.max(...candidates.map((candidate) => candidate.score));
-  const top = candidates.filter((candidate) => candidate.score === topScore);
-  if (top.length !== 1) {
-    throw new MatchResultError("참가자가 일치하는 확정 팀 기록이 여러 개라 자동 연결할 수 없습니다.", 409, "MATCH_SESSION_AMBIGUOUS");
-  }
-  if (results.some((result) => result.sessionId === top[0].session.sessionId)) {
-    throw new MatchResultError("해당 확정 팀에는 이미 경기 결과가 저장되어 있습니다.", 409, "MATCH_SESSION_ALREADY_RECORDED");
-  }
-  return top[0].session;
 }
 
 function validateTeamCounts(participants: Array<{team: MatchTeam}>) {

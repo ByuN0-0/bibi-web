@@ -182,7 +182,6 @@ export type MatchResult = {
   matchResultId: string;
   ingestionId: string;
   sourceHash: string;
-  sessionId: string;
   source: "CHAT_SCREENSHOT";
   playedOn: string;
   winner: MatchTeam;

@@ -1,13 +1,13 @@
 import {beforeEach, describe, expect, it, vi} from "vitest";
 import {NextRequest} from "next/server";
 import type {MatchResult} from "@/lib/lol/types";
-import {makeMatchInput, makePlayers, makeSession} from "@/lib/lol/match-result-test-fixtures";
+import {makeMatchInput, makePlayers} from "@/lib/lol/match-result-test-fixtures";
 
-const mocks = vi.hoisted(() => ({findByIngestionId: vi.fn(), listPlayers: vi.fn(), listSessions: vi.fn(), listResults: vi.fn(), save: vi.fn(), validateAssets: vi.fn()}));
+const mocks = vi.hoisted(() => ({findByIngestionId: vi.fn(), listPlayers: vi.fn(), save: vi.fn(), validateAssets: vi.fn()}));
 
 vi.mock("@/lib/server-env", () => ({getIngestServerEnv: () => ({token: "ingest-token-that-is-at-least-32-characters"})}));
 vi.mock("@/lib/lol/data-dragon", () => ({validateDataDragonReferences: mocks.validateAssets}));
-vi.mock("@/lib/lol/repository", () => ({findMatchResultByIngestionId: mocks.findByIngestionId, listPlayers: mocks.listPlayers, listAllSessions: mocks.listSessions, listMatchResults: mocks.listResults, saveMatchResult: mocks.save}));
+vi.mock("@/lib/lol/repository", () => ({findMatchResultByIngestionId: mocks.findByIngestionId, listPlayers: mocks.listPlayers, saveMatchResult: mocks.save}));
 
 import {POST} from "@/app/api/internal/lol-match-results/route";
 
@@ -17,12 +17,8 @@ const token = "ingest-token-that-is-at-least-32-characters";
 describe("internal match result route", () => {
   beforeEach(() => {
     const players = makePlayers();
-    const session = makeSession(players);
-    session.confirmedAt = Date.now() - 60_000;
     mocks.findByIngestionId.mockReset().mockResolvedValue(null);
     mocks.listPlayers.mockReset().mockResolvedValue(players);
-    mocks.listSessions.mockReset().mockResolvedValue([session]);
-    mocks.listResults.mockReset().mockResolvedValue([]);
     mocks.save.mockReset().mockImplementation(async (result: MatchResult) => ({created: true, result}));
     mocks.validateAssets.mockReset().mockResolvedValue(undefined);
   });
@@ -39,6 +35,7 @@ describe("internal match result route", () => {
     expect(response.status).toBe(200);
     expect(payload.status).toBe("VALID");
     expect(payload.match.participants).toHaveLength(10);
+    expect(payload).not.toHaveProperty("session");
     expect(mocks.validateAssets).toHaveBeenCalledTimes(1);
     expect(mocks.save).not.toHaveBeenCalled();
   });

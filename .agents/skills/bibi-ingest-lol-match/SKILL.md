@@ -28,7 +28,7 @@ Store one standard Korean LoL post-game scoreboard screenshot as structured matc
    node .agents/skills/bibi-ingest-lol-match/scripts/submit-match-result.mjs validate resolved.json
    ```
 
-9. Show the user all extracted values, mapped registered players, guests, the linked confirmed session, team winner, objectives, bans, and every participant field. Clearly say that no database write has happened.
+9. Show the user all extracted values, mapped registered players, guests, team winner, objectives, bans, and every participant field. Clearly say that no database write has happened.
 10. Wait for an explicit instruction such as `저장해`, `확인`, or `commit`. A screenshot upload or a request to analyze is not approval to save.
 11. After approval, submit the unchanged resolved file with the same `ingestionId`:
 
@@ -42,10 +42,10 @@ Store one standard Korean LoL post-game scoreboard screenshot as structured matc
 
 - Read credentials only from `BIBI_WEB_BASE_URL` and `BIBI_INGEST_TOKEN` environment variables.
 - Never print, persist, pass as a CLI argument, or include the token in an error message.
-- Never commit after a failed validation, ambiguous image match, team-link conflict, or missing user confirmation.
+- Never commit after a failed validation, ambiguous image match, or missing user confirmation.
 - Never change `ingestionId` between validation and commit.
 - Never store the screenshot in bibi-web or Oracle SODA.
-- Treat the API response as authoritative for player mapping and confirmed-team linkage.
+- Treat the API response as authoritative for registered-player and guest mapping. Match records are independent of confirmed team sessions.
 - If an asset name is readable, prefer catalog lookup over image comparison.
 
 ## Output review format

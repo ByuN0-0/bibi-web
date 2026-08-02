@@ -11,8 +11,6 @@ import {
 import {validateDataDragonReferences} from "@/lib/lol/data-dragon";
 import {
   findMatchResultByIngestionId,
-  listAllSessions,
-  listMatchResults,
   listPlayers,
   saveMatchResult,
 } from "@/lib/lol/repository";
@@ -54,18 +52,13 @@ export async function POST(request: NextRequest) {
       return NextResponse.json({status: "EXISTING", created: false, result: existing.value});
     }
     const sourceHash = matchResultSourceHash(parsed);
-    const [players, sessions, results] = await Promise.all([
-      listPlayers(),
-      listAllSessions(),
-      listMatchResults(),
-    ]);
-    const prepared = prepareMatchResult(parsed, players, sessions, results);
+    const players = await listPlayers();
+    const prepared = prepareMatchResult(parsed, players);
     if (action === "validate") {
       return NextResponse.json({
         status: "VALID",
         sourceHash: prepared.sourceHash,
         guestCount: prepared.guestCount,
-        session: prepared.session,
         match: {
           playedOn: parsed.playedOn,
           winner: parsed.winner,
@@ -76,28 +69,17 @@ export async function POST(request: NextRequest) {
         },
       });
     }
-    try {
-      const saved = await saveMatchResult(createMatchResult(prepared));
-      if (!saved.created && saved.result.sourceHash !== sourceHash) {
-        return errorResponse(
-          "같은 ingestionId로 다른 경기 결과를 저장할 수 없습니다.",
-          409,
-          "INGESTION_ID_CONFLICT",
-        );
-      }
-      return NextResponse.json({status: saved.created ? "CREATED" : "EXISTING", ...saved}, {
-        status: saved.created ? 201 : 200,
-      });
-    } catch (error) {
-      if (error instanceof Error && error.message === "MATCH_RESULT_SESSION_CONFLICT") {
-        return errorResponse(
-          "해당 확정 팀에는 이미 경기 결과가 저장되어 있습니다.",
-          409,
-          "MATCH_SESSION_ALREADY_RECORDED",
-        );
-      }
-      throw error;
+    const saved = await saveMatchResult(createMatchResult(prepared));
+    if (!saved.created && saved.result.sourceHash !== sourceHash) {
+      return errorResponse(
+        "같은 ingestionId로 다른 경기 결과를 저장할 수 없습니다.",
+        409,
+        "INGESTION_ID_CONFLICT",
+      );
     }
+    return NextResponse.json({status: saved.created ? "CREATED" : "EXISTING", ...saved}, {
+      status: saved.created ? 201 : 200,
+    });
   } catch (error) {
     if (error instanceof MatchResultError) {
       return errorResponse(error.message, error.status, error.code);

@@ -4,6 +4,8 @@
 
 Send `POST /api/internal/lol-match-results` with `Authorization: Bearer <BIBI_INGEST_TOKEN>` and `Content-Type: application/json`. The body is at most 64 KiB. Use the same body and `ingestionId` for `validate` and `commit`, changing only `action`.
 
+The match record is independent of team-balancing sessions and has no `sessionId`. The API maps uniquely matching player names when possible and stores every unmatched or ambiguous name as a guest. `ingestionId` is the only ingestion idempotency key.
+
 ```json
 {
   "action": "validate",
@@ -58,11 +60,13 @@ Include two team records and ten participant records, five per team. `winner` an
 
 Every number is a non-negative integer; duration and level are positive. The API requires each team's K/D/A and gold totals to equal the sums of its five participants. Bans contain exactly five nullable slots, items exactly six nullable slots, summoner spells exactly two non-null slots. A trinket or quest slot may be null.
 
-Asset paths are relative Data Dragon paths. Champion, item, and spell paths start with `img/champion/`, `img/item/`, or `img/spell/`. Perk paths start with `perk-images/`. The server re-fetches the Korean catalog for `ddragonVersion` and rejects any mismatched ID, name, or path.
+Asset paths are relative Data Dragon paths. Champion, item, and spell paths start with `img/champion/`, `img/item/`, or `img/spell/`. Perk paths start with `perk-images/`. The server re-fetches the Korean catalog for `ddragonVersion` and rejects any mismatched ID, name, or path. Normal inventory and trinket matching is restricted to Summoner's Rift items. The role quest slot uses the complete Data Dragon item catalog because 2026 role rewards such as IDs `1206`, `1209`, `1220`, and `1221` are intentionally marked as non-map-11 catalog entries even though they appear in that scoreboard slot.
 
 ## Fixed coordinate guide
 
 Normalize the screenshot to 1028 pixels wide without changing its aspect ratio. Coordinates are approximate top-left crop positions for the standard 1028×604 result screen and must be refined from visible row centers when browser/window chrome changes.
+
+When the whole scoreboard is uniformly shifted vertically, pass `--offset-y <pixels>` to the resolver after width normalization. For example, use `--offset-y -8` when the first BLUE row center is 199 instead of 207.
 
 Player row centers: BLUE `207, 242, 277, 312, 347`; RED `422, 457, 492, 527, 562`.
 

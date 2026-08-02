@@ -2,6 +2,6 @@ interface:
   display_name: "비비 LoL 내전 기록 저장"
   short_description: "점수판 스크린샷을 검증하고 비비웹 기록으로 저장"
   brand_color: "#C89B3C"
-  default_prompt: "Use $bibi-ingest-lol-match to analyze this LoL scoreboard screenshot, validate every visible value, and prepare it for confirmed storage."
+  default_prompt: "Use $bibi-ingest-lol-match to analyze this LoL scoreboard screenshot, validate every visible value, and prepare the independent match record for storage."
 policy:
   allow_implicit_invocation: true

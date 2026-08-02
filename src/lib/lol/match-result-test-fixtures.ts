@@ -89,11 +89,10 @@ export function makeSession(players = makePlayers(), sessionId = "session-1"): T
 export function makeStoredResult(): MatchResult {
   const input = makeMatchInput();
   return {
-    schemaVersion: 2,
+    schemaVersion: 3,
     matchResultId: "result-1",
     ingestionId: input.ingestionId,
     sourceHash: "source-hash",
-    sessionId: "session-1",
     source: "CHAT_SCREENSHOT",
     playedOn: input.playedOn,
     winner: "BLUE",
