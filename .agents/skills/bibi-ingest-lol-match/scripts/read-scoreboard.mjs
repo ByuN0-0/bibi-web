@@ -38,11 +38,10 @@ export async function readScoreboardImage(original, options = {}) {
   const {data: normalizedRaw, info: normalizedInfo} = await sharp(normalized).removeAlpha().raw().toBuffer({resolveWithObject: true});
   const layout = detectScoreboardLayout(normalizedRaw, normalizedInfo);
   if (layout.confidence < 0.42) fail(`점수판 아이템 슬롯 앵커를 찾지 못했습니다. confidence=${layout.confidence.toFixed(2)}`);
-  // OCR columns move with the inventory grid, while the left-side icons and
-  // right-side panels remain fixed. Keep the globally aligned image for OCR,
-  // and a row-only aligned image for independently anchored asset crops.
+  // Screenshots retain their native pixel scale. Use the fixed top-right UI
+  // anchor to translate the whole scoreboard without resampling it.
   aligned = await alignToCanvas(normalized, normalizedInfo, layout.transform);
-  const assetAligned = await alignToCanvas(normalized, normalizedInfo, {...layout.transform, xScale: 1, xOffset: 0});
+  const assetAligned = aligned;
   const rowOffsets = participantRowOffsets(layout);
   const ocrCachePath = join(cacheRoot, "bibi-tesseract-cache");
   await mkdir(ocrCachePath, {recursive: true});
@@ -55,7 +54,7 @@ export async function readScoreboardImage(original, options = {}) {
   try {
     recognizedPayload = await recognizeScoreboard(original, {
       inventoryImage: assetAligned,
-      itemGridLeft: layout.source.itemGridLeft,
+      itemGridLeft: layout.source.itemGridLeft + layout.transform.xOffset,
       itemSlotGap: layout.source.itemSlotGap,
       rowOffsets,
     });
@@ -69,7 +68,7 @@ export async function readScoreboardImage(original, options = {}) {
       screenshot: assetAligned,
       cacheDir: join(cacheRoot, "bibi-ddragon-cache"),
       allowAmbiguous: options.allowAmbiguous ?? true,
-      itemGridLeft: layout.source.itemGridLeft,
+      itemGridLeft: layout.source.itemGridLeft + layout.transform.xOffset,
       itemSlotGap: layout.source.itemSlotGap,
       rowOffsets,
     });

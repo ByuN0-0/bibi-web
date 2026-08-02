@@ -3,6 +3,8 @@ export const REFERENCE_ROWS = {
   BLUE: [207, 242, 277, 312, 347],
   RED: [422, 457, 492, 527, 562],
 };
+const REFERENCE_GRID = {BLUE_TOP: 190, RED_TOP: 407, ITEM_LEFT: 288};
+const REFERENCE_ANCHOR = {x: 942, y: 36};
 export const MATCH_ROLE_ORDER = ["TOP", "JUNGLE", "MIDDLE", "BOTTOM", "UTILITY"];
 
 export function detectScoreboardLayout(data, info) {
@@ -14,14 +16,31 @@ export function detectScoreboardLayout(data, info) {
     return red >= 40 && red <= 185 && green >= 27 && green <= 150 && blue <= 68
       && red > blue * 1.35 && green > blue * 1.15;
   };
+  let bestAnchor = {x: REFERENCE_ANCHOR.x, y: REFERENCE_ANCHOR.y, score: -1};
+  for (let centerY = 16; centerY <= 70; centerY += 1) {
+    for (let centerX = 820; centerX <= 990; centerX += 1) {
+      let matches = 0; let samples = 0;
+      for (let degrees = 0; degrees < 360; degrees += 5) {
+        const radians = degrees * Math.PI / 180;
+        for (const radius of [14, 15, 16]) {
+          const x = Math.round(centerX + Math.cos(radians) * radius);
+          const y = Math.round(centerY + Math.sin(radians) * radius);
+          samples += 1;
+          if (gold(x, y)) matches += 1;
+        }
+      }
+      const score = matches / samples;
+      if (score > bestAnchor.score) bestAnchor = {x: centerX, y: centerY, score};
+    }
+  }
   const horizontal = Array(info.height).fill(0);
   for (let y = 0; y < info.height; y += 1) {
     for (let x = 245; x < 525; x += 1) if (gold(x, y)) horizontal[y] += 1;
   }
 
   let bestRows = {score: -1, gap: 35, height: 24, blueTop: 195, redTop: 410};
-  for (let gap = 28; gap <= 43; gap += 1) {
-    const cellHeight = Math.max(18, Math.round(gap * 24 / 35));
+  for (const gap of [35]) {
+    const cellHeight = 24;
     const redDistance = Math.round(gap * 215 / 35);
     for (let blueTop = 125; blueTop < Math.min(315, info.height - redDistance - gap * 4 - cellHeight); blueTop += 1) {
       const predictedRed = blueTop + redDistance;
@@ -44,7 +63,7 @@ export function detectScoreboardLayout(data, info) {
     ...Array.from({length: 5}, (_, index) => bestRows.redTop + index * bestRows.gap),
   ];
   let bestColumns = {score: -1, gap: 25, start: 284};
-  for (let gap = 20; gap <= 31; gap += 1) {
+  for (const gap of [25]) {
     for (let start = 225; start <= 345; start += 1) {
       let score = 0;
       for (const top of rowTops) {
@@ -66,14 +85,11 @@ export function detectScoreboardLayout(data, info) {
     }
   }
 
-  const detectedBlueCenter = bestRows.blueTop + bestRows.height / 2;
-  const detectedRedCenter = bestRows.redTop + bestRows.height / 2;
-  const detectedDistance = detectedRedCenter - detectedBlueCenter;
-  const yScale = (REFERENCE_ROWS.RED[0] - REFERENCE_ROWS.BLUE[0]) / detectedDistance;
-  const yOffset = REFERENCE_ROWS.BLUE[0] - detectedBlueCenter * yScale;
-  const xScale = 25 / bestColumns.gap;
-  const xOffset = 281 - bestColumns.start * xScale;
+  const xOffset = REFERENCE_ANCHOR.x - bestAnchor.x;
+  const yOffset = REFERENCE_ANCHOR.y - bestAnchor.y;
   const expectedBorderScore = 10 * 8 * Math.max(12, bestRows.height - 3);
+  const gridConfidence = Math.max(0, Math.min(1, bestColumns.score / expectedBorderScore));
+  const anchorConfidence = Math.max(0, Math.min(1, bestAnchor.score / 0.55));
 
   return {
     source: {
@@ -83,9 +99,11 @@ export function detectScoreboardLayout(data, info) {
       cellHeight: bestRows.height,
       itemGridLeft: bestColumns.start,
       itemSlotGap: bestColumns.gap,
+      anchorX: bestAnchor.x,
+      anchorY: bestAnchor.y,
     },
-    transform: {xScale, xOffset, yScale, yOffset},
-    confidence: Math.max(0, Math.min(1, bestColumns.score / expectedBorderScore)),
+    transform: {xScale: 1, xOffset, yScale: 1, yOffset},
+    confidence: Math.min(gridConfidence, anchorConfidence),
   };
 }
 
@@ -105,7 +123,7 @@ export function parseDate(text) {
 }
 
 export function parseDuration(text) {
-  const match = String(text ?? "").replace(/\s/g, "").match(/(\d{1,2})[:.-](\d{2})/);
+  const match = String(text ?? "").replace(/\s/g, "").match(/(\d{1,2})\D+(\d{2})/);
   if (!match) return null;
   const minutes = Number(match[1]); const seconds = Number(match[2]);
   return seconds < 60 ? minutes * 60 + seconds : null;
@@ -176,10 +194,11 @@ export function participantRowOffsets(layout) {
   const offsets = {};
   for (const team of ["BLUE", "RED"]) {
     const firstTop = team === "BLUE" ? source.blueTop : source.redTop;
-    offsets[team] = REFERENCE_ROWS[team].map((referenceRow, index) => {
-      const sourceCenter = firstTop + source.cellHeight / 2 + index * source.rowGap;
-      const alignedCenter = sourceCenter * transform.yScale + transform.yOffset;
-      const rounded = Math.round(alignedCenter - referenceRow);
+    const referenceTop = team === "BLUE" ? REFERENCE_GRID.BLUE_TOP : REFERENCE_GRID.RED_TOP;
+    offsets[team] = REFERENCE_ROWS[team].map((_, index) => {
+      const sourceTop = firstTop + index * source.rowGap;
+      const alignedTop = sourceTop * transform.yScale + transform.yOffset;
+      const rounded = Math.round(alignedTop - (referenceTop + index * 35));
       return Object.is(rounded, -0) ? 0 : rounded;
     });
   }

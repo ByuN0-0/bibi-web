@@ -14,13 +14,14 @@ import {
   selectUniqueAssetAssignments,
   validateMechanicalTotals,
 } from "./scoreboard-machine-core.mjs";
-import {banCropLooksUnselected, isObtainableInventoryItem, isScoreboardKeystone, participantAssetCoordinates, participantInventoryCoordinates} from "./resolve-ddragon-assets.mjs";
+import {applyBanOverlayModel, banCropLooksUnselected, extractBanOverlayModel, isDecisiveBanOverlay, isObtainableInventoryItem, isScoreboardKeystone, participantAssetCoordinates, participantInventoryCoordinates} from "./resolve-ddragon-assets.mjs";
 
 describe("scoreboard machine parsing", () => {
   it("normalizes common OCR substitutions", () => {
     expect(parseInteger("1O,985")).toBe(10985);
     expect(parseDate("2026-07-30")).toBe("2026-07-30");
     expect(parseDuration("23-32")).toBe(23 * 60 + 32);
+    expect(parseDuration("34:-09")).toBe(34 * 60 + 9);
   });
 
   it("matches Korean, English and OCR-confusable alt account names", () => {
@@ -118,6 +119,28 @@ describe("summoner spell and quest constraints", () => {
 });
 
 describe("ban assignment constraints", () => {
+  it("extracts repeated diagonal pixels from all ban slots and composites them onto candidates", () => {
+    const crops = Array.from({length: 10}, (_, cropIndex) => {
+      const crop = Buffer.alloc(32 * 32 * 3);
+      for (let y = 0; y < 32; y += 1) for (let x = 0; x < 32; x += 1) {
+        const index = (y * 32 + x) * 3;
+        const line = Math.abs(x + y - 25) <= 1 || Math.abs(x + y - 35) <= 1;
+        crop[index] = line ? 90 : (x * 17 + cropIndex * 31) % 255;
+        crop[index + 1] = line ? 90 : (y * 23 + cropIndex * 19) % 255;
+        crop[index + 2] = line ? 90 : (x * 11 + y * 7 + cropIndex * 29) % 255;
+      }
+      return crop;
+    });
+    const model = extractBanOverlayModel(crops);
+    expect(model.alpha[12 * 32 + 13]).toBeGreaterThan(0.3);
+    expect(model.alpha[0]).toBe(0);
+    const icon = Buffer.alloc(32 * 32 * 3, 200);
+    const overlaid = applyBanOverlayModel(icon, model);
+    expect(overlaid[(12 * 32 + 13) * 3]).toBeLessThan(200);
+    expect(overlaid[0]).toBe(200);
+    expect(overlaid[(20 * 32 + 20) * 3]).toBe(200);
+  });
+
   it("detects an unselected ban slot before champion matching", () => {
     const empty = Buffer.alloc(24 * 24 * 3, 12);
     const occupied = Buffer.alloc(24 * 24 * 3);
@@ -128,6 +151,21 @@ describe("ban assignment constraints", () => {
     }
     expect(banCropLooksUnselected(empty)).toBe(false);
     expect(banCropLooksUnselected(occupied)).toBe(false);
+  });
+
+  it("uses the extracted overlay only when its match is decisive", () => {
+    expect(isDecisiveBanOverlay([
+      {pixelError: 200, matchScore: 200},
+      {pixelError: 220, matchScore: 220},
+    ])).toBe(true);
+    expect(isDecisiveBanOverlay([
+      {pixelError: 200, matchScore: 200},
+      {pixelError: 210, matchScore: 210},
+    ])).toBe(false);
+    expect(isDecisiveBanOverlay([
+      {pixelError: 251, matchScore: 251},
+      {pixelError: 300, matchScore: 300},
+    ])).toBe(false);
   });
 
   it("selects the lowest-scoring unique champion assignment for one team", () => {
@@ -189,30 +227,30 @@ describe("scoreboard anchor detection", () => {
       const index = (y * CANVAS.width + x) * channels;
       data[index] = 120; data[index + 1] = 90; data[index + 2] = 10;
     };
-    const rowTops = [...Array.from({length: 5}, (_, index) => 195 + index * 35), ...Array.from({length: 5}, (_, index) => 410 + index * 35)];
+    const rowTops = [...Array.from({length: 5}, (_, index) => 190 + index * 35), ...Array.from({length: 5}, (_, index) => 407 + index * 35)];
     for (const top of rowTops) {
       for (let x = 245; x < 525; x += 1) { paint(x, top); paint(x, top + 24); }
       for (let boundary = 0; boundary <= 7; boundary += 1) {
-        const x = 281 + boundary * 25;
+        const x = 288 + boundary * 25;
         for (let y = top + 2; y < top + 23; y += 1) paint(x, y);
       }
-      for (const x of [465, 490]) for (let y = top + 2; y < top + 23; y += 1) paint(x, y);
+      for (const x of [472, 497]) for (let y = top + 2; y < top + 23; y += 1) paint(x, y);
     }
     const layout = detectScoreboardLayout(data, {width: CANVAS.width, height: CANVAS.height, channels});
-    expect(layout.source).toMatchObject({blueTop: 195, redTop: 410, rowGap: 35, cellHeight: 24, itemGridLeft: 281, itemSlotGap: 25});
+    expect(layout.source).toMatchObject({blueTop: 190, redTop: 407, rowGap: 35, cellHeight: 24, itemGridLeft: 288, itemSlotGap: 25});
     expect(layout.transform).toEqual({xScale: 1, xOffset: 0, yScale: 1, yOffset: 0});
     expect(layout.confidence).toBeGreaterThan(0.8);
   });
 
-  it("independently corrects noncanonical horizontal and vertical scale", () => {
+  it("translates a shifted fixed-size scoreboard without scaling it", () => {
     const channels = 3;
     const data = new Uint8Array(CANVAS.width * CANVAS.height * channels);
     const paint = (x, y) => {
       const index = (y * CANVAS.width + x) * channels;
       data[index] = 120; data[index + 1] = 90; data[index + 2] = 10;
     };
-    const gap = 40; const height = 27; const start = 230; const slotGap = 20;
-    const rowTops = [...Array.from({length: 5}, (_, index) => 170 + index * gap), ...Array.from({length: 5}, (_, index) => 416 + index * gap)];
+    const gap = 35; const height = 24; const start = 295; const slotGap = 25;
+    const rowTops = [...Array.from({length: 5}, (_, index) => 195 + index * gap), ...Array.from({length: 5}, (_, index) => 412 + index * gap)];
     for (const top of rowTops) {
       for (let x = 225; x < 505; x += 1) { paint(x, top); paint(x, top + height); }
       for (let boundary = 0; boundary <= 7; boundary += 1) {
@@ -224,26 +262,25 @@ describe("scoreboard anchor detection", () => {
       }
     }
     const layout = detectScoreboardLayout(data, {width: CANVAS.width, height: CANVAS.height, channels});
-    const sourceBlueCenter = layout.source.blueTop + layout.source.cellHeight / 2;
-    const sourceRedCenter = layout.source.redTop + layout.source.cellHeight / 2;
-    expect(layout.source).toMatchObject({blueTop: 170, redTop: 416, rowGap: 40, itemGridLeft: 230, itemSlotGap: 20});
-    expect(sourceBlueCenter * layout.transform.yScale + layout.transform.yOffset).toBeCloseTo(207, 5);
-    expect(sourceRedCenter * layout.transform.yScale + layout.transform.yOffset).toBeCloseTo(422, 5);
-    expect(layout.source.itemGridLeft * layout.transform.xScale + layout.transform.xOffset).toBeCloseTo(281, 5);
+    expect(layout.source).toMatchObject({blueTop: 195, redTop: 412, rowGap: 35, itemGridLeft: 295, itemSlotGap: 25});
+    expect(layout.transform).toEqual({xScale: 1, xOffset: -7, yScale: 1, yOffset: -5});
+    expect(layout.source.blueTop + layout.transform.yOffset).toBe(190);
+    expect(layout.source.redTop + layout.transform.yOffset).toBe(407);
+    expect(layout.source.itemGridLeft + layout.transform.xOffset).toBe(288);
     expect(participantRowOffsets(layout)).toEqual({
       BLUE: [0, 0, 0, 0, 0],
       RED: [0, 0, 0, 0, 0],
     });
   });
 
-  it("corrects per-row rounding drift after global scoreboard alignment", () => {
+  it("keeps team-specific row translation after global alignment", () => {
     const layout = {
-      source: {blueTop: 190, redTop: 407, rowGap: 35, cellHeight: 24},
-      transform: {yScale: 215 / 217, yOffset: 207 - 202 * (215 / 217)},
+      source: {blueTop: 190, redTop: 409, rowGap: 35, cellHeight: 24},
+      transform: {xScale: 1, xOffset: 0, yScale: 1, yOffset: -1},
     };
     expect(participantRowOffsets(layout)).toEqual({
-      BLUE: [0, 0, -1, -1, -1],
-      RED: [0, 0, -1, -1, -1],
+      BLUE: [-1, -1, -1, -1, -1],
+      RED: [1, 1, 1, 1, 1],
     });
   });
 });

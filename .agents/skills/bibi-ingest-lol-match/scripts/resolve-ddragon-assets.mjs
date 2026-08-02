@@ -17,6 +17,8 @@ const binaryCache = new Map();
 const iconCache = new Map();
 const iconHashCache = new WeakMap();
 let normalizedScreenPromise;
+let banOverlayModelPromise;
+let banComparisonIconCache = new WeakMap();
 let sharpPromise;
 let cacheDir;
 let offsetY;
@@ -45,6 +47,8 @@ export async function resolveDataDragonAssets(input, options = {}) {
   payload = structuredClone(input);
   screenshot = options.screenshot ?? null;
   normalizedScreenPromise = undefined;
+  banOverlayModelPromise = undefined;
+  banComparisonIconCache = new WeakMap();
   unresolved = [];
   resolutions = [];
   candidatePools = new Map();
@@ -186,6 +190,7 @@ async function compareCrop(buffer, crop, candidates, kind, field) {
   const sharp = await getSharp();
   normalizedScreenPromise ??= sharp(buffer).resize({width: 1028}).png().toBuffer();
   const normalizedScreen = await normalizedScreenPromise;
+  const banOverlayModel = kind === "ban" ? await getBanOverlayModel(sharp, normalizedScreen) : null;
   const targets = await normalizedCropTargets(sharp, normalizedScreen, crop, kind);
   const evaluated = [];
   for (const target of targets) {
@@ -198,24 +203,108 @@ async function compareCrop(buffer, crop, candidates, kind, field) {
     const candidateLimit = kind === "quest" ? catalogs.quest.length : 5;
     const hashShortlist = scored.sort((a, b) => a.hashDistance - b.hashDistance).slice(0, kind === "ban" ? scored.length : 150);
     const precisionPool = bestCandidateVariants(hashShortlist, target.normalized, kind).slice(0, candidateLimit);
-    if (precisionPool[0]) evaluated.push({target, precisionPool, quality: cropQuality(precisionPool, target)});
+    if (!precisionPool[0]) continue;
+    evaluated.push({
+      target,
+      precisionPool,
+      quality: cropQuality(precisionPool, target),
+    });
   }
   const chosen = evaluated.sort((left, right) => left.quality - right.quality)[0];
-  const precisionPool = chosen?.precisionPool ?? [];
+  if (kind === "ban" && chosen) {
+    const overlayMatch = await compareBanOverlayAtOffsets(sharp, normalizedScreen, crop, candidates, banOverlayModel);
+    chosen.overlayPool = overlayMatch.pool;
+    chosen.overlayOffset = overlayMatch.offset;
+  }
+  const cleanPool = chosen?.precisionPool ?? [];
+  const overlayDecisive = kind === "ban" && isDecisiveBanOverlay(chosen.overlayPool);
+  const precisionPool = kind === "ban" && chosen.overlayPool?.length ? chosen.overlayPool : cleanPool;
   candidatePools.set(field, precisionPool);
-  if (process.env.BIBI_DDRAGON_DEBUG === "1") process.stderr.write(`${field} ${kind} crop=${chosen?.target.dx ?? 0},${chosen?.target.dy ?? 0} candidates: ${precisionPool.map((entry) => `${entry.candidate.name}:${entry.hashDistance}/${Math.round(entry.pixelError)}`).join(", ")}\n`);
-  const normalMatch = isUniqueMatch(precisionPool, acceptanceThreshold(kind), acceptanceMargin(kind));
+  if (process.env.BIBI_DDRAGON_DEBUG === "1") {
+    process.stderr.write(`${field} ${kind} crop=${chosen?.target.dx ?? 0},${chosen?.target.dy ?? 0} candidates: ${cleanPool.map((entry) => `${entry.candidate.name}:${entry.hashDistance}/${Math.round(entry.pixelError)}`).join(", ")}\n`);
+    if (kind === "ban") process.stderr.write(`${field} ban-overlay candidates: ${chosen.overlayPool.map((entry) => `${entry.candidate.name}:${entry.hashDistance}/${Math.round(entry.pixelError)}`).join(", ")}\n`);
+  }
+  const normalMatch = kind === "ban"
+    ? overlayDecisive
+    : isUniqueMatch(precisionPool, acceptanceThreshold(kind), acceptanceMargin(kind));
   const clearChampionHash = kind === "champion" && precisionPool[0]?.hashDistance <= 20
     && precisionPool[0].pixelError <= 650 && scoreGap(precisionPool) >= 35;
   const clearPerk = kind === "perk" && precisionPool[0]?.pixelError <= 750 && scoreGap(precisionPool) >= 60;
   const selected = precisionPool[0];
   const accepted = normalMatch || clearChampionHash || clearPerk;
   if (selected) {
-    const resolution = {field, kind, selected: assetRef(selected.candidate), accepted, score: Math.round(selected.matchScore), runnerUpGap: Math.round(scoreGap(precisionPool)), cropOffset: {x: chosen.target.dx, y: chosen.target.dy}};
+    const overlaySelected = chosen.overlayPool?.[0];
+    const overlayAgreed = kind === "ban" && overlaySelected?.candidate.id === selected.candidate.id;
+    const selectedOffset = kind === "ban" ? chosen.overlayOffset : chosen.target;
+    const resolution = {field, kind, selected: assetRef(selected.candidate), accepted, score: Math.round(selected.matchScore), runnerUpGap: Math.round(scoreGap(precisionPool)), cropOffset: {x: selectedOffset.dx, y: selectedOffset.dy}};
+    if (kind === "ban") {
+      resolution.cleanCropOffset = {x: chosen.target.dx, y: chosen.target.dy};
+      resolution.cleanSelected = cleanPool[0] ? assetRef(cleanPool[0].candidate) : null;
+      resolution.overlaySelected = overlaySelected ? assetRef(overlaySelected.candidate) : null;
+      resolution.overlayAgreed = overlayAgreed;
+      resolution.overlayDecisive = overlayDecisive;
+      resolution.overlayRunnerUpGap = overlaySelected ? Math.round(scoreGap(chosen.overlayPool)) : null;
+      resolution.reason = overlayDecisive
+        ? "extracted-ban-overlay-decisive"
+        : "extracted-ban-overlay-low-confidence";
+    }
     resolutions.push(resolution);
     resolutionByField.set(field, resolution);
   }
   return accepted || (allowAmbiguous && selected) ? selected.candidate : null;
+}
+
+async function compareBanOverlayAtOffsets(sharp, normalizedScreen, crop, candidates, model) {
+  const verticalOffsets = crop.top < 350 ? [-1, 0] : [-1, 0, 1];
+  const offsets = verticalOffsets.flatMap((dy) => [-1, 0, 1].map((dx) => ({dx, dy})));
+  const evaluated = [];
+  for (const offset of offsets) {
+    const target = await normalizedBanOverlayTarget(sharp, normalizedScreen, crop, offset);
+    const pool = await compareBanOverlayCandidates(candidates, target, model);
+    if (pool[0]) evaluated.push({offset, pool, quality: cropQuality(pool, offset)});
+  }
+  return evaluated.sort((left, right) => left.quality - right.quality)[0] ?? {offset: {dx: 0, dy: 0}, pool: []};
+}
+
+export function isDecisiveBanOverlay(pool) {
+  return Boolean(pool?.[0]
+    && pool[0].pixelError <= 250
+    && scoreGap(pool) >= 12);
+}
+
+async function normalizedBanOverlayTarget(sharp, normalizedScreen, crop, offset) {
+  const artwork = {
+    left: crop.left + 9 + offset.dx,
+    top: crop.top + (crop.top < 350 ? -4 : -3) + offset.dy,
+    width: 26,
+    height: 26,
+  };
+  return sharp(normalizedScreen)
+    .extract(artwork)
+    .resize(32, 32)
+    .removeAlpha()
+    .raw()
+    .toBuffer();
+}
+
+async function compareBanOverlayCandidates(candidates, target, model) {
+  const targetHash = differenceHash(target, 32, 32, 3);
+  const entries = [];
+  for (const candidate of candidates) {
+    const icons = await cachedCandidateIcons(candidate, "ban-overlay");
+    for (const icon of icons) {
+      const comparisonIcon = applyBanOverlayModel(icon, model);
+      const pixelError = meanBanExtractedOverlayError(target, icon, comparisonIcon, model);
+      const hashDistance = hamming(targetHash, cachedIconHash(comparisonIcon));
+      entries.push({candidate, icon, comparisonIcon, pixelError, hashDistance, matchScore: pixelError});
+    }
+  }
+  const best = new Map();
+  for (const entry of entries) {
+    const previous = best.get(entry.candidate.id);
+    if (!previous || entry.matchScore < previous.matchScore) best.set(entry.candidate.id, entry);
+  }
+  return [...best.values()].sort((left, right) => left.matchScore - right.matchScore).slice(0, 5);
 }
 
 async function normalizedCropTargets(sharp, normalizedScreen, crop, kind) {
@@ -246,6 +335,56 @@ function cachedIconHash(icon) {
     iconHashCache.set(icon, hash);
   }
   return hash;
+}
+
+async function getBanOverlayModel(sharp, normalizedScreen) {
+  banOverlayModelPromise ??= Promise.all(banOverlayExtractionCoordinates().map((rectangle) => (
+    sharp(normalizedScreen).extract(rectangle).resize(32, 32).removeAlpha().raw().toBuffer()
+  ))).then(extractBanOverlayModel);
+  return banOverlayModelPromise;
+}
+
+function banOverlayExtractionCoordinates() {
+  const rows = [[194 + banOffsetY, [854, 919, 984]], [229 + banOffsetY, [854, 919]], [410 + banOffsetY, [854, 919, 984]], [445 + banOffsetY, [854, 919]]];
+  return rows.flatMap(([top, lefts]) => lefts.map((left) => ({left, top, width: 26, height: 26})));
+}
+
+export function extractBanOverlayModel(crops) {
+  if (!Array.isArray(crops) || crops.length < 2) throw new Error("At least two ban crops are required.");
+  const colors = Buffer.alloc(32 * 32 * 3);
+  const alpha = new Float32Array(32 * 32);
+  for (let pixel = 0; pixel < 32 * 32; pixel += 1) {
+    const x = pixel % 32; const y = Math.floor(pixel / 32);
+    const channels = [0, 1, 2].map((channel) => crops.map((crop) => crop[pixel * 3 + channel]).sort((left, right) => left - right));
+    const medians = channels.map((values) => values[Math.floor(values.length / 2)]);
+    for (let channel = 0; channel < 3; channel += 1) colors[pixel * 3 + channel] = medians[channel];
+    const diagonalDistance = Math.min(Math.abs(x + y - 25), Math.abs(x + y - 35));
+    if (diagonalDistance > 3) continue;
+    const variance = channels.reduce((sum, values) => {
+      const mean = values.reduce((total, value) => total + value, 0) / values.length;
+      return sum + values.reduce((total, value) => total + (value - mean) ** 2, 0) / values.length;
+    }, 0) / 3;
+    const saturation = Math.max(...medians) - Math.min(...medians);
+    if (variance >= 1600 || saturation >= 18) continue;
+    alpha[pixel] = Math.max(0.35, Math.min(0.92, (1 - variance / 1800) * (1 - saturation / 35)));
+  }
+  return {colors, alpha};
+}
+
+export function applyBanOverlayModel(icon, model) {
+  let overlaid = banComparisonIconCache.get(icon);
+  if (overlaid) return overlaid;
+  overlaid = Buffer.from(icon);
+  for (let pixel = 0; pixel < 32 * 32; pixel += 1) {
+    const opacity = model.alpha[pixel];
+    if (!opacity) continue;
+    for (let channel = 0; channel < 3; channel += 1) {
+      const index = pixel * 3 + channel;
+      overlaid[index] = Math.round(overlaid[index] * (1 - opacity) + model.colors[index] * opacity);
+    }
+  }
+  banComparisonIconCache.set(icon, overlaid);
+  return overlaid;
 }
 
 async function isUnselectedBan(buffer, crop) {
@@ -303,7 +442,8 @@ async function cachedCandidateIcons(entry, kind) {
   let pending = iconCache.get(key);
   if (!pending) {
     pending = (async () => {
-      const cachePaths = [0, 1, 2].map((variant) => join(cacheDir, version, kind, `${entry.id}-color-v9-${variant}.raw`));
+      const cacheRevision = kind === "ban-overlay" ? "v13" : "v9";
+      const cachePaths = [0, 1, 2].map((variant) => join(cacheDir, version, kind, `${entry.id}-color-${cacheRevision}-${variant}.raw`));
       try { return await Promise.all(cachePaths.map((path) => readFile(path))); } catch {}
       const source = await candidateImage(entry);
       if (!source) return [];
@@ -376,6 +516,30 @@ function meanError(left, right, kind) {
   const strongestColorCorrelation = Math.max(...correlations);
   return (1 - (luminanceCorrelation * 0.25 + strongestColorCorrelation * 0.55 + averageColorCorrelation * 0.2)) * 1000;
 }
+function meanBanExtractedOverlayError(left, clean, overlaid, model) {
+  const allPixels = [];
+  const contentPixels = [];
+  for (let y = 1; y < 31; y += 1) {
+    for (let x = 1; x < 31; x += 1) {
+      const pixel = y * 32 + x;
+      allPixels.push(pixel);
+      if (model.alpha[pixel] < 0.2) contentPixels.push(pixel);
+    }
+  }
+  const overlayError = meanAbsoluteErrorAtPixels(left, overlaid, allPixels);
+  const contentError = meanAbsoluteErrorAtPixels(left, clean, contentPixels);
+  return overlayError * 0.7 + contentError * 0.3;
+}
+function meanAbsoluteErrorAtPixels(left, right, pixels) {
+  let error = 0;
+  for (const pixel of pixels) {
+    for (let channel = 0; channel < 3; channel += 1) {
+      const index = pixel * 3 + channel;
+      error += Math.abs(left[index] - right[index]);
+    }
+  }
+  return error / (pixels.length * 3 * 255) * 1000;
+}
 function meanAbsoluteError(left, right) {
   let error = 0;
   for (let index = 0; index < left.length; index += 1) error += Math.abs(left[index] - right[index]);
@@ -426,6 +590,9 @@ function applyUniqueTeamBans(teamIndex) {
   for (let index = 0; index < fields.length; index += 1) {
     const resolution = resolutionByField.get(fields[index]);
     const selected = result.assignments[index];
+    if (resolution?.kind === "ban" && resolution.overlaySelected) {
+      resolution.overlayAgreed = resolution.overlaySelected.id === selected.candidate?.id;
+    }
     if (!resolution || resolution.selected?.id === selected.candidate?.id) continue;
     resolution.selected = assetRef(selected.candidate);
     resolution.accepted = false;
@@ -484,6 +651,7 @@ function nativeIconSize(kind) {
   if (kind === "spell") return 11;
   if (kind === "perk") return 20;
   if (kind === "champion") return 32;
+  if (kind === "ban-overlay") return 32;
   return 22;
 }
 function assetRef(entry) { return entry ? {id: entry.id, name: entry.name, iconPath: entry.iconPath} : null; }
