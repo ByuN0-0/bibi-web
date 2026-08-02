@@ -24,7 +24,7 @@ Vercel 프로젝트에 다음 환경변수를 등록합니다. 실제 비밀번�
 | 변수 | 설명 |
 | --- | --- |
 | `ADMIN_USERNAME` | 관리자 아이디(기본 운영값 `bibi`) |
-| `ADMIN_PASSWORD` | 12자 이상의 강한 관리자 비밀번호 |
+| `ADMIN_PASSWORD` | 10자 이상의 강한 관리자 비밀번호 |
 | `SESSION_SECRET` | 32자 이상의 무작위 세션 서명 키 |
 | `SODA_BASE_URL` | Oracle SODA REST `/soda/latest` URL |
 | `SODA_USERNAME` | Oracle SODA 사용자 이름 |

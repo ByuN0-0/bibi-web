@@ -26,8 +26,8 @@ export function getServerEnv(): ServerEnv {
   const sodaUsername = required("SODA_USERNAME");
   const sodaPassword = required("SODA_PASSWORD");
   const timeout = Number(process.env.SODA_TIMEOUT_SECONDS ?? "10");
-  if (adminPassword.length < 12) {
-    throw new Error("ADMIN_PASSWORD must be at least 12 characters");
+  if (adminPassword.length < 10) {
+    throw new Error("ADMIN_PASSWORD must be at least 10 characters");
   }
   if (sessionSecret.length < 32) {
     throw new Error("SESSION_SECRET must be at least 32 characters");
