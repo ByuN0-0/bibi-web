@@ -1,4 +1,4 @@
-// app/page.tsx
+// app/(marketing)/page.tsx
 "use client"; // 클라이언트 전용 컴포넌트로 지정
 
 export default function Home() {

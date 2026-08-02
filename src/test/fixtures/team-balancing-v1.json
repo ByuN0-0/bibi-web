@@ -1,0 +1,17 @@
+{
+  "algorithmVersion": "team-balancing-v1",
+  "seed": 20260802,
+  "expectedSignature": "1001-1003-1006-1008-1009|1002-1004-1005-1007-1010",
+  "players": [
+    {"id":"1001","name":"선수1","primaryRole":"TOP","secondaryRole":"JUNGLE","signals":{"TOP":0.82,"JUNGLE":0.55,"MIDDLE":0.30,"BOTTOM":0.25,"UTILITY":0.35}},
+    {"id":"1002","name":"선수2","primaryRole":"TOP","secondaryRole":"MIDDLE","signals":{"TOP":0.74,"JUNGLE":0.40,"MIDDLE":0.58,"BOTTOM":0.30,"UTILITY":0.28}},
+    {"id":"1003","name":"선수3","primaryRole":"JUNGLE","secondaryRole":"TOP","signals":{"TOP":0.51,"JUNGLE":0.80,"MIDDLE":0.35,"BOTTOM":0.25,"UTILITY":0.42}},
+    {"id":"1004","name":"선수4","primaryRole":"JUNGLE","secondaryRole":"UTILITY","signals":{"TOP":0.30,"JUNGLE":0.72,"MIDDLE":0.32,"BOTTOM":0.38,"UTILITY":0.60}},
+    {"id":"1005","name":"선수5","primaryRole":"MIDDLE","secondaryRole":"BOTTOM","signals":{"TOP":0.38,"JUNGLE":0.31,"MIDDLE":0.84,"BOTTOM":0.58,"UTILITY":0.27}},
+    {"id":"1006","name":"선수6","primaryRole":"MIDDLE","secondaryRole":"TOP","signals":{"TOP":0.55,"JUNGLE":0.28,"MIDDLE":0.76,"BOTTOM":0.44,"UTILITY":0.32}},
+    {"id":"1007","name":"선수7","primaryRole":"BOTTOM","secondaryRole":"UTILITY","signals":{"TOP":0.28,"JUNGLE":0.35,"MIDDLE":0.50,"BOTTOM":0.81,"UTILITY":0.48}},
+    {"id":"1008","name":"선수8","primaryRole":"BOTTOM","secondaryRole":"MIDDLE","signals":{"TOP":0.32,"JUNGLE":0.30,"MIDDLE":0.63,"BOTTOM":0.73,"UTILITY":0.37}},
+    {"id":"1009","name":"선수9","primaryRole":"UTILITY","secondaryRole":"JUNGLE","signals":{"TOP":0.27,"JUNGLE":0.52,"MIDDLE":0.31,"BOTTOM":0.44,"UTILITY":0.79}},
+    {"id":"1010","name":"선수10","primaryRole":"UTILITY","secondaryRole":"BOTTOM","signals":{"TOP":0.35,"JUNGLE":0.38,"MIDDLE":0.29,"BOTTOM":0.57,"UTILITY":0.70}}
+  ]
+}
