@@ -5,6 +5,7 @@ import Link from "next/link";
 import LolIcon from "@/app/components/LolIcon";
 import LolMatchScoreboard from "@/app/components/LolMatchScoreboard";
 import MatchResultEditor from "@/app/lol-statics/components/MatchResultEditor";
+import {readApiJson} from "@/lib/api-response";
 import {swapRecognitionReviews} from "@/lib/lol/match-result-draft";
 import type {MatchRecognitionReport, MatchRecognitionReview, MatchResult, MatchResultDraft, MatchTeam, PlayerProfile} from "@/lib/lol/types";
 
@@ -61,7 +62,10 @@ export default function AdminMatchHistory({initialResults, initialNextOffset, pl
     form.set("image", file);
     try {
       const response = await fetch("/api/lol-statics/match-results/recognize", {method: "POST", body: form});
-      const payload = await response.json() as Recognition & {error?: string};
+      const payload = await readApiJson<Recognition & {error?: string}>(response, {
+        fallbackMessage: "점수판을 판독하지 못했습니다.",
+        timeoutMessage: "점수판 판독 시간이 제한을 초과했습니다. 잠시 후 다시 시도해 주세요.",
+      });
       if (!response.ok) throw new Error(payload.error ?? "점수판을 판독하지 못했습니다.");
       setRecognition(payload);
       setReviews(payload.report.reviews);
@@ -85,7 +89,9 @@ export default function AdminMatchHistory({initialResults, initialNextOffset, pl
         headers: {"Content-Type": "application/json"},
         body: JSON.stringify({draft, reviewReceipt: recognition.reviewReceipt, confirmedReviewIds}),
       });
-      const payload = await response.json() as {status?: "CREATED" | "EXISTING"; result?: MatchResult; error?: string};
+      const payload = await readApiJson<{status?: "CREATED" | "EXISTING"; result?: MatchResult; error?: string}>(response, {
+        fallbackMessage: "경기 결과를 저장하지 못했습니다.",
+      });
       if (!response.ok || !payload.result) throw new Error(payload.error ?? "경기 결과를 저장하지 못했습니다.");
       finishSaved(payload.result, payload.status === "EXISTING" ? "이미 저장된 경기를 열었습니다." : "경기 결과를 저장했습니다.");
     } catch (saveError) {
@@ -111,7 +117,9 @@ export default function AdminMatchHistory({initialResults, initialNextOffset, pl
     setError("");
     try {
       const response = await fetch(`/api/lol-statics/history?offset=${nextOffset}`, {cache: "no-store"});
-      const payload = await response.json() as {results?: MatchResult[]; nextOffset?: number | null; error?: string};
+      const payload = await readApiJson<{results?: MatchResult[]; nextOffset?: number | null; error?: string}>(response, {
+        fallbackMessage: "기록을 더 불러오지 못했습니다.",
+      });
       if (!response.ok) throw new Error(payload.error ?? "기록을 더 불러오지 못했습니다.");
       setResults((current) => [...current, ...(payload.results ?? []).filter((next) => !current.some((result) => result.matchResultId === next.matchResultId))]);
       setNextOffset(payload.nextOffset ?? null);

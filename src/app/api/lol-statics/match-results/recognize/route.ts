@@ -5,7 +5,9 @@ import {listPlayerAccounts, listPlayers} from "@/lib/lol/repository";
 import {recognizeScoreboard} from "@/lib/lol/scoreboard-recognition.server";
 
 export const runtime = "nodejs";
-export const maxDuration = 60;
+// OCR is CPU-heavy on a cold serverless instance. Keep this below Vercel Fluid
+// Compute's Hobby maximum while leaving enough room for cold worker startup.
+export const maxDuration = 300;
 
 const MAX_IMAGE_BYTES = 4 * 1024 * 1024;
 const ALLOWED_TYPES = new Set(["image/png", "image/jpeg", "image/webp"]);

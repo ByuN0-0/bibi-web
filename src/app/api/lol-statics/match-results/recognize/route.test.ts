@@ -10,13 +10,17 @@ vi.mock("@/lib/lol/match-recognition-receipt", () => ({createReviewReceipt: vi.f
 import {hasApiSession, hasSameOrigin} from "@/lib/auth-server";
 import {listPlayerAccounts, listPlayers} from "@/lib/lol/repository";
 import {recognizeScoreboard} from "@/lib/lol/scoreboard-recognition.server";
-import {POST} from "@/app/api/lol-statics/match-results/recognize/route";
+import {maxDuration, POST} from "@/app/api/lol-statics/match-results/recognize/route";
 
 const session = vi.mocked(hasApiSession);
 const sameOrigin = vi.mocked(hasSameOrigin);
 const recognize = vi.mocked(recognizeScoreboard);
 
 describe("admin scoreboard recognition API", () => {
+  it("allows enough time for a cold OCR worker", () => {
+    expect(maxDuration).toBe(300);
+  });
+
   beforeEach(() => {
     vi.clearAllMocks();
     session.mockResolvedValue(true);
