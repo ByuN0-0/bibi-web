@@ -1,5 +1,8 @@
 import {describe, expect, it} from "vitest";
-import {comparisonShare, formatCsPerMinute, formatKdaRatio, groupMatchResultsByDate, playerNameKey, sortParticipantsByRole} from "@/lib/lol/match-history-view";
+import {buildMatchHistoryPlayerLookup, comparisonShare, formatCsPerMinute, formatKdaRatio, groupMatchResultsByDate, playerNameKey, sortParticipantsByRole} from "@/lib/lol/match-history-view";
+import type {RankInfo} from "@/lib/lol/types";
+
+const unranked = (): RankInfo => ({tier: "UNRANKED", division: null, leaguePoints: 0, wins: 0, losses: 0});
 
 describe("match history view helpers", () => {
   it("groups matches by date in reverse chronological order while preserving each date's input order", () => {
@@ -40,5 +43,22 @@ describe("match history view helpers", () => {
     expect(formatCsPerMinute(210, 1800)).toBe("7.0");
     expect(formatCsPerMinute(0, 0)).toBe("0.0");
     expect(playerNameKey("  내 연  ")).toBe("내 연");
+  });
+
+  it("matches alternate Riot accounts to the registered player name and account rank", () => {
+    const primaryRank = {...unranked(), tier: "GOLD" as const, division: "II" as const};
+    const alternateRank = {...unranked(), tier: "DIAMOND" as const, division: "IV" as const};
+    const players = [{
+      discordUserId: "player-1", displayName: "비연", riotGameName: "대표계정", riotTagLine: "KR1",
+      soloRank: primaryRank, flexRank: unranked(),
+    }];
+    const lookup = buildMatchHistoryPlayerLookup(players, [{
+      discordUserId: "player-1", riotGameName: "숨겨둔부계정", riotTagLine: "KR2",
+      soloRank: alternateRank, flexRank: unranked(),
+    }]);
+
+    expect(lookup[playerNameKey("대표계정")]).toMatchObject({displayName: "비연", soloRank: primaryRank});
+    expect(lookup[playerNameKey("숨겨둔부계정")]).toMatchObject({displayName: "비연", soloRank: alternateRank});
+    expect(lookup[playerNameKey("숨겨둔부계정#KR2")]).toMatchObject({displayName: "비연", soloRank: alternateRank});
   });
 });

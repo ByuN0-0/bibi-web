@@ -5,7 +5,8 @@ import {
   sortPlayersByParticipation,
   summarizePlayerParticipation,
 } from "@/lib/lol/player-participation";
-import {listMatchResults, listPlayers} from "@/lib/lol/repository";
+import type {MatchHistoryAccount} from "@/lib/lol/match-history-view";
+import {listMatchResults, listPlayerAccounts, listPlayers} from "@/lib/lol/repository";
 
 export const metadata: Metadata = {
   title: "롤 내전 팀 편성 | 비비",
@@ -16,12 +17,14 @@ export const dynamic = "force-dynamic";
 
 export default async function Home({searchParams}: {searchParams: Promise<{tab?: string}>}) {
   let players = [] as Awaited<ReturnType<typeof listPlayers>>;
+  let accounts: MatchHistoryAccount[] = [];
   let participation = {} as ReturnType<typeof summarizePlayerParticipation>;
   let loadFailed = false;
   try {
-    const [loadedPlayers, results] = await Promise.all([listPlayers(), listMatchResults()]);
+    const [loadedPlayers, loadedAccounts, results] = await Promise.all([listPlayers(), listPlayerAccounts(), listMatchResults()]);
     participation = summarizePlayerParticipation(results);
     players = sortPlayersByParticipation(loadedPlayers, participation);
+    accounts = loadedAccounts.map(({discordUserId, riotGameName, riotTagLine, soloRank, flexRank}) => ({discordUserId, riotGameName, riotTagLine, soloRank, flexRank}));
   } catch (error) {
     loadFailed = true;
     const message = error instanceof Error ? error.message : "unknown";
@@ -44,6 +47,7 @@ export default async function Home({searchParams}: {searchParams: Promise<{tab?:
         </div>
         <PublicLolHub
           players={players}
+          accounts={accounts}
           playerParticipation={participation}
           playerLoadFailed={loadFailed}
           initialTab={tab === "history" ? "history" : "team"}

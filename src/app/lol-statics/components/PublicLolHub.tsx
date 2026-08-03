@@ -4,13 +4,15 @@ import {useEffect, useState} from "react";
 import {useRouter} from "next/navigation";
 import TeamBuilder from "@/app/lol-statics/components/TeamBuilder";
 import PublicMatchHistory from "@/app/lol-statics/components/PublicMatchHistory";
+import type {MatchHistoryAccount} from "@/lib/lol/match-history-view";
 import type {PlayerParticipationMap} from "@/lib/lol/player-participation";
 import type {PlayerProfile, PublicMatchResult} from "@/lib/lol/types";
 
 type HubTab = "team" | "history";
 
-export default function PublicLolHub({players, playerParticipation, playerLoadFailed, initialTab}: {
+export default function PublicLolHub({players, accounts, playerParticipation, playerLoadFailed, initialTab}: {
   players: PlayerProfile[];
+  accounts: MatchHistoryAccount[];
   playerParticipation: PlayerParticipationMap;
   playerLoadFailed: boolean;
   initialTab: HubTab;
@@ -71,6 +73,7 @@ export default function PublicLolHub({players, playerParticipation, playerLoadFa
         <PublicMatchHistory
           results={results}
           players={players}
+          accounts={accounts}
           loading={historyLoading || (!historyLoaded && !historyError)}
           error={historyError}
           hasMore={historyLoaded && nextOffset !== null}

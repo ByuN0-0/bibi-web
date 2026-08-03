@@ -1,4 +1,4 @@
-import type {MatchResultParticipant, PublicMatchResult, PublicMatchResultParticipant, Role} from "@/lib/lol/types";
+import type {MatchResultParticipant, PlayerProfile, PublicMatchResult, PublicMatchResultParticipant, RankInfo, RiotAccountProfile, Role} from "@/lib/lol/types";
 import {ROLES} from "@/lib/lol/types";
 
 type HistoryResult = Pick<PublicMatchResult, "playedOn">;
@@ -7,6 +7,13 @@ type HistoryParticipant = Pick<MatchResultParticipant | PublicMatchResultPartici
 export type MatchHistoryDateGroup<T extends HistoryResult> = {
   playedOn: string;
   results: T[];
+};
+
+export type MatchHistoryAccount = Pick<RiotAccountProfile, "discordUserId" | "riotGameName" | "riotTagLine" | "soloRank" | "flexRank">;
+export type MatchHistoryPlayerIdentity = {
+  displayName: string;
+  soloRank: RankInfo;
+  flexRank: RankInfo;
 };
 
 const ROLE_ORDER = new Map<Role, number>(ROLES.map((role, index) => [role, index]));
@@ -37,6 +44,41 @@ export function comparisonShare(left: number, right: number): number {
 
 export function playerNameKey(name: string): string {
   return name.normalize("NFC").trim().replace(/\s+/g, " ").toLocaleLowerCase("ko-KR");
+}
+
+export function buildMatchHistoryPlayerLookup(
+  players: Array<Pick<PlayerProfile, "discordUserId" | "displayName" | "riotGameName" | "riotTagLine" | "soloRank" | "flexRank">>,
+  accounts: MatchHistoryAccount[],
+): Record<string, MatchHistoryPlayerIdentity> {
+  const candidates = new Map<string, Map<string, MatchHistoryPlayerIdentity>>();
+  const playersById = new Map(players.map((player) => [player.discordUserId, player]));
+
+  const add = (discordUserId: string, riotGameName: string, riotTagLine: string, identity: MatchHistoryPlayerIdentity) => {
+    for (const rawKey of [riotGameName, `${riotGameName}#${riotTagLine}`]) {
+      const key = playerNameKey(rawKey);
+      const matches = candidates.get(key) ?? new Map<string, MatchHistoryPlayerIdentity>();
+      matches.set(discordUserId, identity);
+      candidates.set(key, matches);
+    }
+  };
+
+  for (const player of players) {
+    add(player.discordUserId, player.riotGameName, player.riotTagLine, player);
+  }
+  for (const account of accounts) {
+    const player = playersById.get(account.discordUserId);
+    if (!player) continue;
+    add(account.discordUserId, account.riotGameName, account.riotTagLine, {
+      displayName: player.displayName,
+      soloRank: account.soloRank,
+      flexRank: account.flexRank,
+    });
+  }
+
+  return Object.fromEntries(Array.from(candidates, ([key, matches]) => {
+    if (matches.size !== 1) return null;
+    return [key, matches.values().next().value!];
+  }).filter((entry): entry is [string, MatchHistoryPlayerIdentity] => entry !== null));
 }
 
 export function formatKdaRatio(kills: number, deaths: number, assists: number): string {

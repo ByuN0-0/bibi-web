@@ -3,21 +3,23 @@
 import LolIcon from "@/app/components/LolIcon";
 import {LolObjectiveIcon} from "@/app/components/LolGameUiIcon";
 import LolMatchScoreboard, {type MatchPlayerRankMap} from "@/app/components/LolMatchScoreboard";
-import {groupMatchResultsByDate, playerNameKey, sortParticipantsByRole} from "@/lib/lol/match-history-view";
+import {buildMatchHistoryPlayerLookup, groupMatchResultsByDate, playerNameKey, sortParticipantsByRole, type MatchHistoryAccount} from "@/lib/lol/match-history-view";
 import type {MatchResultTeamStats, MatchTeam, PlayerProfile, PublicMatchResult, RankInfo} from "@/lib/lol/types";
 import {rankTierDisplay} from "@/lib/lol/types";
 
-export default function PublicMatchHistory({results, players, loading, error, hasMore, onLoadMore}: {
+export default function PublicMatchHistory({results, players, accounts, loading, error, hasMore, onLoadMore}: {
   results: PublicMatchResult[];
   players: PlayerProfile[];
+  accounts: MatchHistoryAccount[];
   loading: boolean;
   error: string;
   hasMore: boolean;
   onLoadMore: () => void;
 }) {
   const dateGroups = groupMatchResultsByDate(results);
-  const playerRanks = Object.fromEntries(players.map((player) => [playerNameKey(player.riotGameName), currentRank(player)])) satisfies MatchPlayerRankMap;
-  const playerNames = Object.fromEntries(players.map((player) => [playerNameKey(player.riotGameName), player.displayName]));
+  const playerLookup = buildMatchHistoryPlayerLookup(players, accounts);
+  const playerRanks = Object.fromEntries(Object.entries(playerLookup).map(([key, identity]) => [key, currentRank(identity)])) satisfies MatchPlayerRankMap;
+  const playerNames = Object.fromEntries(Object.entries(playerLookup).map(([key, identity]) => [key, identity.displayName]));
 
   return (
     <section aria-labelledby="history-title" className="mx-auto w-full max-w-[1080px]">
@@ -187,7 +189,7 @@ const formatDate = (value: string) => new Intl.DateTimeFormat("ko-KR", {dateStyl
 const formatDuration = (seconds: number) => `${Math.floor(seconds / 60)}분 ${String(seconds % 60).padStart(2, "0")}초`;
 const formatGold = (gold: number) => `${(gold / 1000).toFixed(1)}K`;
 
-function currentRank(player: PlayerProfile): MatchPlayerRankMap[string] {
+function currentRank(player: Pick<PlayerProfile, "soloRank" | "flexRank">): MatchPlayerRankMap[string] {
   if (isRanked(player.soloRank)) return {rank: rankTierDisplay(player.soloRank), queue: "솔랭"};
   if (isRanked(player.flexRank)) return {rank: rankTierDisplay(player.flexRank), queue: "자랭"};
   return {rank: "배치 전", queue: "랭크"};
