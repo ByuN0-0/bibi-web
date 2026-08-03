@@ -5,6 +5,7 @@ const navigation = [
   {href: "/", label: "팀 편성"},
   {href: "/?tab=history", label: "내전 기록"},
   {href: "/?tab=stats", label: "개인 스탯"},
+  {href: "/team-balance", label: "편성 원리"},
   {href: "/about", label: "비비 소개"},
 ];
 

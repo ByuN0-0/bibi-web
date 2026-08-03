@@ -14,6 +14,8 @@ describe("TeamBalancingGuide", () => {
     expect(markup).toContain("주 포지션 0, 부 포지션 0.25");
     expect(markup).toContain("낮은 신뢰도");
     expect(markup).toContain("대략 8판 미만");
+    expect(markup).toContain("전체 계산 원리 보기");
+    expect(markup).toContain("href=\"/team-balance\"");
     expect(markup).toContain("id=\"guide\"");
   });
 });

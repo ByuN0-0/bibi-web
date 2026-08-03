@@ -1,4 +1,5 @@
 import React from "react";
+import Link from "next/link";
 import {
   BALANCE_FORMULA_ITEMS,
   BALANCE_GRADE_RULES,
@@ -53,6 +54,12 @@ export default function TeamBalancingGuide({id}: {id: string}) {
             <div><dt className="inline font-bold text-[var(--warning)]">낮은 신뢰도</dt><dd className="inline"> — {LOW_CONFIDENCE_DESCRIPTION} 최근 솔랭 기준 대략 8판 미만에서 주로 표시되며, 자랭·일반게임은 더 많은 표본이 필요할 수 있어요.</dd></div>
           </dl>
         </GuideBlock>
+      </div>
+      <div className="mt-4 flex flex-col gap-2 border-t border-[var(--hairline)] pt-4 sm:flex-row sm:items-center sm:justify-between">
+        <p className="text-xs leading-5 text-[var(--muted)]">개인 점수, 최근 폼, 내전 Elo가 합쳐지는 과정도 궁금한가요?</p>
+        <Link href="/team-balance" className="inline-flex min-h-10 items-center justify-center rounded-lg border border-[var(--primary)] bg-white px-4 text-xs font-bold text-[var(--primary)] hover:bg-[var(--primary-soft)]">
+          전체 계산 원리 보기 →
+        </Link>
       </div>
     </section>
   );
