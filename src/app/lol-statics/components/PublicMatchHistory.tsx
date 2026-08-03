@@ -54,8 +54,8 @@ function MatchHistoryCard({result, playerRanks, playerNames}: {result: PublicMat
 
   return (
     <details className={`group overflow-hidden rounded-xl border border-[var(--hairline-soft)] border-l-4 bg-white ${blueWinner ? "border-l-[#4f83e3]" : "border-l-[#e94f6d]"}`}>
-      <summary className="relative cursor-pointer list-none px-3.5 py-2.5 transition-colors hover:bg-[var(--surface-soft)] [&::-webkit-details-marker]:hidden">
-        <div className="grid gap-3 md:grid-cols-[100px_minmax(0,1fr)] lg:grid-cols-[88px_360px_minmax(0,1fr)] lg:items-center">
+      <summary className="relative cursor-pointer list-none px-3.5 py-2 transition-colors hover:bg-[var(--surface-soft)] [&::-webkit-details-marker]:hidden">
+        <div className="grid gap-3 md:grid-cols-[100px_minmax(0,1fr)] lg:grid-cols-[88px_360px_minmax(0,1fr)] lg:items-center lg:gap-x-6">
           <MatchInfo winner={result.winner} durationSeconds={result.durationSeconds} />
           <TeamTotals blue={blueStats} red={redStats} />
           <RosterSummary result={result} playerNames={playerNames} />
@@ -129,7 +129,7 @@ function RosterSummary({result, playerNames}: {result: PublicMatchResult; player
           <p className="text-[9px] font-bold uppercase leading-none tracking-wide text-[#c43652]">Red team</p>
           <span aria-hidden="true" />
         </div>
-        <div className="space-y-0.5">
+        <div className="space-y-px">
           {blueParticipants.map((blueParticipant, index) => {
             const redParticipant = redParticipants[index];
             const blueName = playerNames[playerNameKey(blueParticipant.observedName)];
@@ -155,7 +155,7 @@ function RosterSummary({result, playerNames}: {result: PublicMatchResult; player
 function RosterPlayer({result, participant}: {result: PublicMatchResult; participant: PublicMatchResult["participants"][number]}) {
   return (
     <div className="flex min-w-0 items-center gap-1.5">
-      <LolIcon asset={participant.champion} version={result.ddragonVersion} size={18} className="shrink-0 rounded" />
+      <LolIcon asset={participant.champion} version={result.ddragonVersion} size={17} className="shrink-0 rounded" />
       <span className="min-w-0 truncate text-[11px] font-medium leading-none" title={participant.observedName}>{participant.observedName}</span>
     </div>
   );
@@ -166,13 +166,13 @@ function RosterColumn({result, team, playerNames}: {result: PublicMatchResult; t
   const blue = team === "BLUE";
   return (
     <div className="min-w-0">
-      <p className={`mb-0.5 text-[9px] font-bold uppercase leading-none tracking-wide ${blue ? "text-[#3269bd]" : "text-[#c43652]"}`}>{blue ? "Blue team" : "Red team"}</p>
-      <div className="space-y-0.5">
+      <p className={`mb-px text-[9px] font-bold uppercase leading-none tracking-wide ${blue ? "text-[#3269bd]" : "text-[#c43652]"}`}>{blue ? "Blue team" : "Red team"}</p>
+      <div className="space-y-px">
         {participants.map((participant) => {
           const displayName = playerNames[playerNameKey(participant.observedName)];
           return (
             <div key={`${participant.role}-${participant.observedName}`} className="flex min-w-0 items-center gap-1.5">
-              <LolIcon asset={participant.champion} version={result.ddragonVersion} size={18} className="shrink-0 rounded" />
+              <LolIcon asset={participant.champion} version={result.ddragonVersion} size={17} className="shrink-0 rounded" />
               <span className="min-w-0 flex-1 truncate text-[11px] font-medium leading-none" title={participant.observedName}>{participant.observedName}</span>
               {displayName && <span className="max-w-16 shrink-0 truncate text-right text-[10px] font-semibold leading-none text-[var(--muted)]" title={displayName}>{displayName}</span>}
             </div>
