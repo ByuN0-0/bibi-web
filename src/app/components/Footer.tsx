@@ -14,7 +14,7 @@ export default function Footer() {
     <footer className="border-t border-[var(--hairline-soft)] bg-white">
       <div className="page-shell py-12 sm:py-14">
         <div className="flex flex-col justify-between gap-9 sm:flex-row sm:items-start">
-          <div className="max-w-sm">
+          <div className="min-w-0 sm:flex-1">
             <Link href="/" className="inline-flex items-center gap-3">
               <Image src="/images/bibi-logo.png" alt="" width={42} height={42} className="h-[42px] w-[42px] rounded-full object-cover" />
               <span className="text-lg font-bold">비비</span>
