@@ -1,6 +1,7 @@
 "use client";
 
 import LolIcon from "@/app/components/LolIcon";
+import {LolObjectiveIcon} from "@/app/components/LolGameUiIcon";
 import LolMatchScoreboard from "@/app/components/LolMatchScoreboard";
 import {groupMatchResultsByDate, sortParticipantsByRole} from "@/lib/lol/match-history-view";
 import type {MatchResultTeamStats, MatchTeam, PublicMatchResult} from "@/lib/lol/types";
@@ -80,23 +81,32 @@ function MatchInfo({winner, durationSeconds}: {winner: MatchTeam; durationSecond
 
 function TeamTotals({blue, red}: {blue: MatchResultTeamStats; red: MatchResultTeamStats}) {
   return (
-    <div className="rounded-lg bg-[var(--surface-soft)] px-3 py-2">
-      <div className="grid grid-cols-[1fr_auto_1fr] items-end gap-2 text-center">
-        <div><p className="text-[10px] font-bold uppercase leading-none tracking-wide text-[#3269bd]">Blue</p><p className="mt-0.5 text-[30px] font-black leading-none tabular-nums">{blue.kills}</p></div>
-        <p className="pb-0.5 text-[10px] font-bold text-[var(--muted-soft)]">VS</p>
-        <div><p className="text-[10px] font-bold uppercase leading-none tracking-wide text-[#c43652]">Red</p><p className="mt-0.5 text-[30px] font-black leading-none tabular-nums">{red.kills}</p></div>
-      </div>
-      <div className="mt-1.5 grid grid-cols-3 divide-x divide-[var(--hairline)] border-t border-[var(--hairline)] pt-1.5 text-center text-[11px] text-[var(--muted)]">
-        <Metric label="골드" blue={formatGold(blue.goldTotal)} red={formatGold(red.goldTotal)} />
-        <Metric label="포탑" blue={blue.objectives.turretsDestroyed} red={red.objectives.turretsDestroyed} />
-        <Metric label="드래곤" blue={blue.objectives.dragonKills} red={red.objectives.dragonKills} />
+    <div className="overflow-hidden rounded-lg border border-[var(--hairline-soft)] bg-white shadow-[0_1px_2px_rgba(0,0,0,0.03)]">
+      <div className="flex h-0.5" aria-hidden="true"><span className="flex-1 bg-[#4f83e3]" /><span className="flex-1 bg-[#e94f6d]" /></div>
+      <div className="px-3 pb-2 pt-1.5">
+        <div className="grid grid-cols-[1fr_auto_1fr] items-end gap-2 text-center">
+          <div><p className="text-[10px] font-bold uppercase leading-none tracking-wide text-[#3269bd]">Blue</p><p className="mt-0.5 text-[30px] font-black leading-none tabular-nums">{blue.kills}</p></div>
+          <p className="pb-0.5 text-[10px] font-bold text-[var(--muted-soft)]">VS</p>
+          <div><p className="text-[10px] font-bold uppercase leading-none tracking-wide text-[#c43652]">Red</p><p className="mt-0.5 text-[30px] font-black leading-none tabular-nums">{red.kills}</p></div>
+        </div>
+        <div className="mt-1.5 grid grid-cols-3 divide-x divide-[var(--hairline-soft)] border-t border-[var(--hairline-soft)] pt-1.5 text-center text-[11px] text-[var(--muted)]">
+          <Metric kind="gold" label="골드" blue={formatGold(blue.goldTotal)} red={formatGold(red.goldTotal)} />
+          <Metric kind="turret" label="포탑" blue={blue.objectives.turretsDestroyed} red={red.objectives.turretsDestroyed} />
+          <Metric kind="dragon" label="드래곤" blue={blue.objectives.dragonKills} red={red.objectives.dragonKills} />
+        </div>
       </div>
     </div>
   );
 }
 
-function Metric({label, blue, red}: {label: string; blue: string | number; red: string | number}) {
-  return <p className="leading-none"><span className="text-xs font-extrabold text-[#3269bd]">{blue}</span><span className="mx-1 text-[9px]">{label}</span><span className="text-xs font-extrabold text-[#c43652]">{red}</span></p>;
+function Metric({kind, label, blue, red}: {kind: "gold" | "turret" | "dragon"; label: string; blue: string | number; red: string | number}) {
+  return (
+    <p className="flex items-center justify-center gap-1.5 leading-none" aria-label={`${label} 블루 ${blue}, 레드 ${red}`}>
+      <span className="text-xs font-extrabold text-[#3269bd]">{blue}</span>
+      <LolObjectiveIcon kind={kind} size={15} />
+      <span className="text-xs font-extrabold text-[#c43652]">{red}</span>
+    </p>
+  );
 }
 
 function RosterSummary({result}: {result: PublicMatchResult}) {

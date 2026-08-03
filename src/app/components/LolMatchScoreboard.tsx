@@ -1,7 +1,7 @@
 import LolIcon from "@/app/components/LolIcon";
+import {LolPositionIcon} from "@/app/components/LolGameUiIcon";
 import {comparisonShare, sortParticipantsByRole} from "@/lib/lol/match-history-view";
 import type {MatchObjectives, MatchResult, MatchResultParticipant, MatchResultTeamStats, MatchTeam, PublicMatchResult, PublicMatchResultParticipant} from "@/lib/lol/types";
-import {ROLE_LABEL} from "@/lib/lol/types";
 
 const OBJECTIVES: Array<[keyof MatchObjectives, string]> = [
   ["turretsDestroyed", "포탑"],
@@ -117,7 +117,7 @@ function DesktopPlayerRow({participant, version, compact}: {participant: Scorebo
   const iconSize = compact ? 32 : 38;
   return (
     <tr className="border-t border-[var(--hairline-soft)] bg-white hover:bg-[var(--surface-soft)]">
-      <td className={compact ? "px-3 py-1.5" : "px-3 py-2.5"}><div className="flex items-center gap-2.5"><LolIcon asset={participant.champion} version={version} size={iconSize} /><div className="min-w-0"><p className="max-w-52 truncate font-semibold" title={participant.observedName}><span className="mr-1 text-[10px] text-[var(--muted)]">{ROLE_LABEL[participant.role]}</span>{participant.observedName}</p><p className="mt-0.5 text-[10px] text-[var(--muted)]">Lv.{participant.level} · {participant.champion.name}{participant.guest ? " · 게스트" : ""}</p></div></div></td>
+      <td className={compact ? "px-3 py-1.5" : "px-3 py-2.5"}><div className="flex items-center gap-2.5"><LolIcon asset={participant.champion} version={version} size={iconSize} /><div className="min-w-0"><p className="flex max-w-52 items-center gap-1.5 font-semibold"><LolPositionIcon role={participant.role} size={compact ? 14 : 16} /><span className="truncate" title={participant.observedName}>{participant.observedName}</span></p><p className="mt-0.5 text-[10px] text-[var(--muted)]">Lv.{participant.level} · {participant.champion.name}{participant.guest ? " · 게스트" : ""}</p></div></div></td>
       <td className={compact ? "px-3 py-1.5" : "px-3 py-2.5"}><div className="flex gap-1"><LolIcon asset={participant.primaryPerk} version={version} size={compact ? 24 : 28} />{participant.summonerSpells.map((spell, index) => <LolIcon key={index} asset={spell} version={version} size={compact ? 24 : 28} />)}</div></td>
       <td className={`${compact ? "px-2 py-1.5" : "px-3 py-2.5"} text-center font-bold tabular-nums`}>{participant.kills} / {participant.deaths} / {participant.assists}</td>
       <td className={`${compact ? "px-2 py-1.5" : "px-3 py-2.5"} text-right tabular-nums`}>{participant.cs}</td>
@@ -130,7 +130,7 @@ function DesktopPlayerRow({participant, version, compact}: {participant: Scorebo
 function MobilePlayerCard({participant, version, compact}: {participant: ScoreboardParticipant; version: string; compact: boolean}) {
   return (
     <article className={`bg-white ${compact ? "p-2.5" : "p-4"}`}>
-      <div className="flex items-start justify-between gap-3"><div className="flex min-w-0 items-center gap-2.5"><LolIcon asset={participant.champion} version={version} size={compact ? 34 : 42} /><div className="min-w-0"><p className="truncate text-sm font-semibold" title={participant.observedName}><span className="mr-1 text-[10px] text-[var(--muted)]">{ROLE_LABEL[participant.role]}</span>{participant.observedName}</p><p className="text-[10px] text-[var(--muted)]">Lv.{participant.level} · {participant.champion.name}{participant.guest ? " · 게스트" : ""}</p></div></div><p className="shrink-0 text-sm font-bold tabular-nums">{participant.kills}/{participant.deaths}/{participant.assists}</p></div>
+      <div className="flex items-start justify-between gap-3"><div className="flex min-w-0 items-center gap-2.5"><LolIcon asset={participant.champion} version={version} size={compact ? 34 : 42} /><div className="min-w-0"><p className="flex items-center gap-1.5 text-sm font-semibold"><LolPositionIcon role={participant.role} size={compact ? 14 : 16} /><span className="truncate" title={participant.observedName}>{participant.observedName}</span></p><p className="text-[10px] text-[var(--muted)]">Lv.{participant.level} · {participant.champion.name}{participant.guest ? " · 게스트" : ""}</p></div></div><p className="shrink-0 text-sm font-bold tabular-nums">{participant.kills}/{participant.deaths}/{participant.assists}</p></div>
       <div className={`${compact ? "mt-2" : "mt-3"} flex flex-wrap items-center justify-between gap-2`}><div className="flex gap-1"><LolIcon asset={participant.primaryPerk} version={version} size={compact ? 22 : 26} />{participant.summonerSpells.map((spell, index) => <LolIcon key={index} asset={spell} version={version} size={compact ? 22 : 26} />)}</div><p className="text-xs text-[var(--muted)]">CS {participant.cs} · {participant.goldEarned.toLocaleString()} G</p></div>
       <div className={compact ? "mt-2" : "mt-3"}><Inventory participant={participant} version={version} size={compact ? 22 : 28} /></div>
     </article>
