@@ -13,7 +13,7 @@ import type {
   Role,
   RiotAccountProfile,
 } from "@/lib/lol/types";
-import {MATCH_TEAMS, ROLES} from "@/lib/lol/types";
+import {MATCH_TEAMS, MAX_LEVEL_BY_ROLE, ROLES} from "@/lib/lol/types";
 import {participantRoleAssetError, roleFromQuestSlot} from "@/lib/lol/match-role-assets";
 import {reviewTargetKey} from "@/lib/lol/match-review";
 
@@ -239,15 +239,16 @@ function parseParticipants(value: unknown): ParsedMatchParticipant[] {
     const requestedRole = participant.role === undefined ? null : matchRole(participant.role, `participants[${index}].role`);
     if (questSlot && !questRole) throw new MatchResultError(`${participant.observedName ?? `participants[${index}]`}의 퀘스트가 포지션 퀘스트가 아닙니다.`);
     if (questRole && requestedRole && questRole !== requestedRole) throw new MatchResultError(`participants[${index}]의 포지션과 퀘스트가 일치하지 않습니다.`);
+    const role = questRole ?? requestedRole ?? fallbackRole;
     return {
       team,
-      role: questRole ?? requestedRole ?? fallbackRole,
+      role,
       observedName: text(participant.observedName, `participants[${index}].observedName`, 80),
       discordUserId: requestedDiscordUserId,
       champion: assetRef(participant.champion, `participants[${index}].champion`),
       primaryPerk: assetRef(participant.primaryPerk, `participants[${index}].primaryPerk`),
       summonerSpells: fixedAssetSlots(participant.summonerSpells, 2, `participants[${index}].summonerSpells`, false),
-      level: boundedInteger(participant.level, `participants[${index}].level`, 1, 18),
+      level: boundedInteger(participant.level, `participants[${index}].level`, 1, MAX_LEVEL_BY_ROLE[role]),
       kills: nonNegativeInteger(participant.kills, `participants[${index}].kills`),
       deaths: nonNegativeInteger(participant.deaths, `participants[${index}].deaths`),
       assists: nonNegativeInteger(participant.assists, `participants[${index}].assists`),

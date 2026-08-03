@@ -70,15 +70,29 @@ describe("match result ingestion", () => {
     expect(() => parseMatchResultInput(mismatch)).toThrow("BLUE 팀 goldTotal 합계가 개인 합계와 일치하지 않습니다.");
   });
 
-  it("accepts only scoreboard levels 1 through 18 for ingestion and admin edits", () => {
-    for (const level of [0, 19, 114]) {
+  it("accepts level 20 for top only during ingestion and admin edits", () => {
+    const top = makeMatchInput();
+    top.participants[0].level = 20;
+    expect(parseMatchResultInput(top).participants[0].level).toBe(20);
+    const storedTop = makeStoredResult();
+    storedTop.participants[0].level = 20;
+    expect(parseAdminMatchResultUpdate(storedTop, makePlayers()).participants[0].level).toBe(20);
+
+    for (const level of [0, 21, 114]) {
       const body = makeMatchInput();
       body.participants[0].level = level;
-      expect(() => parseMatchResultInput(body)).toThrow("1~18");
+      expect(() => parseMatchResultInput(body)).toThrow("1~20");
       const stored = makeStoredResult();
       stored.participants[0].level = level;
-      expect(() => parseAdminMatchResultUpdate(stored, makePlayers())).toThrow("1~18");
+      expect(() => parseAdminMatchResultUpdate(stored, makePlayers())).toThrow("1~20");
     }
+
+    const jungle = makeMatchInput();
+    jungle.participants[1].level = 19;
+    expect(() => parseMatchResultInput(jungle)).toThrow("1~18");
+    const storedJungle = makeStoredResult();
+    storedJungle.participants[1].level = 19;
+    expect(() => parseAdminMatchResultUpdate(storedJungle, makePlayers())).toThrow("1~18");
   });
 
   it("parses stable review targets and forces new issues open", () => {

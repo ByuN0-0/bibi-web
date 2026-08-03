@@ -12,6 +12,14 @@ export const ROLE_LABEL: Record<Role, string> = {
   UTILITY: "서포터",
 };
 
+export const MAX_LEVEL_BY_ROLE: Record<Role, number> = {
+  TOP: 20,
+  JUNGLE: 18,
+  MIDDLE: 18,
+  BOTTOM: 18,
+  UTILITY: 18,
+};
+
 export type RankInfo = {
   tier: string;
   division: string;
