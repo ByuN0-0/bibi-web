@@ -76,18 +76,18 @@ function MatchInfo({winner, durationSeconds}: {winner: MatchTeam; durationSecond
   const blue = winner === "BLUE";
   return (
     <div className="pr-20 md:pr-0">
-      <p className="text-[10px] font-semibold uppercase tracking-[0.12em] text-[var(--muted)]">내전</p>
-      <p className={`mt-0.5 text-sm font-extrabold ${blue ? "text-[#3269bd]" : "text-[#c43652]"}`}>{blue ? "블루 승리" : "레드 승리"}</p>
-      <p className="mt-0.5 text-[11px] font-medium text-[var(--muted)]">{formatDuration(durationSeconds)}</p>
+      <p className={`text-[17px] font-extrabold leading-none ${blue ? "text-[#3269bd]" : "text-[#c43652]"}`}>{blue ? "블루 승리" : "레드 승리"}</p>
+      <p className="mt-1.5 text-[11px] font-medium text-[var(--muted)]">{formatDuration(durationSeconds)}</p>
     </div>
   );
 }
 
 function TeamTotals({blue, red}: {blue: MatchResultTeamStats; red: MatchResultTeamStats}) {
   return (
-    <div className="overflow-hidden rounded-lg border border-[var(--hairline-soft)] bg-white shadow-[0_1px_2px_rgba(0,0,0,0.03)]">
+    <div className="flex self-stretch overflow-hidden rounded-lg border border-[var(--hairline-soft)] bg-white shadow-[0_1px_2px_rgba(0,0,0,0.03)]">
+      <div className="flex w-full flex-col">
       <div className="flex h-0.5" aria-hidden="true"><span className="flex-1 bg-[#4f83e3]" /><span className="flex-1 bg-[#e94f6d]" /></div>
-      <div className="px-3 pb-2 pt-1.5">
+      <div className="flex flex-1 flex-col justify-center px-3 pb-2 pt-1.5">
         <div className="grid grid-cols-[1fr_auto_1fr] items-end gap-2 text-center">
           <div><p className="text-[10px] font-bold uppercase leading-none tracking-wide text-[#3269bd]">Blue</p><p className="mt-0.5 text-[30px] font-black leading-none tabular-nums">{blue.kills}</p></div>
           <p className="pb-0.5 text-[10px] font-bold text-[var(--muted-soft)]">VS</p>
@@ -98,6 +98,7 @@ function TeamTotals({blue, red}: {blue: MatchResultTeamStats; red: MatchResultTe
           <Metric kind="turret" label="포탑" blue={blue.objectives.turretsDestroyed} red={red.objectives.turretsDestroyed} />
           <Metric kind="dragon" label="드래곤" blue={blue.objectives.dragonKills} red={red.objectives.dragonKills} />
         </div>
+      </div>
       </div>
     </div>
   );
@@ -114,10 +115,48 @@ function Metric({kind, label, blue, red}: {kind: "gold" | "turret" | "dragon"; l
 }
 
 function RosterSummary({result, playerNames}: {result: PublicMatchResult; playerNames: Record<string, string>}) {
+  const blueParticipants = sortParticipantsByRole(result.participants.filter((participant) => participant.team === "BLUE"));
+  const redParticipants = sortParticipantsByRole(result.participants.filter((participant) => participant.team === "RED"));
   return (
-    <div className="grid grid-cols-2 gap-3 md:col-span-2 md:grid-cols-[repeat(2,minmax(0,200px))] md:justify-center lg:col-span-1 lg:justify-start">
-      <RosterColumn result={result} team="BLUE" playerNames={playerNames} />
-      <RosterColumn result={result} team="RED" playerNames={playerNames} />
+    <>
+      <div className="grid grid-cols-2 gap-3 md:col-span-2 md:grid-cols-[repeat(2,minmax(0,200px))] md:justify-center lg:hidden">
+        <RosterColumn result={result} team="BLUE" playerNames={playerNames} />
+        <RosterColumn result={result} team="RED" playerNames={playerNames} />
+      </div>
+      <div className="hidden min-w-0 pr-16 lg:block">
+        <div className="mb-0.5 grid grid-cols-[minmax(0,145px)_minmax(0,145px)_minmax(0,150px)] gap-2">
+          <p className="text-[9px] font-bold uppercase leading-none tracking-wide text-[#3269bd]">Blue team</p>
+          <p className="text-[9px] font-bold uppercase leading-none tracking-wide text-[#c43652]">Red team</p>
+          <span aria-hidden="true" />
+        </div>
+        <div className="space-y-0.5">
+          {blueParticipants.map((blueParticipant, index) => {
+            const redParticipant = redParticipants[index];
+            const blueName = playerNames[playerNameKey(blueParticipant.observedName)];
+            const redName = redParticipant ? playerNames[playerNameKey(redParticipant.observedName)] : undefined;
+            return (
+              <div key={blueParticipant.role} className="grid min-w-0 grid-cols-[minmax(0,145px)_minmax(0,145px)_minmax(0,150px)] items-center gap-2">
+                <RosterPlayer result={result} participant={blueParticipant} />
+                {redParticipant ? <RosterPlayer result={result} participant={redParticipant} /> : <span />}
+                <div className="grid min-w-0 grid-cols-[minmax(0,1fr)_auto_minmax(0,1fr)] items-center gap-1 text-[10px] font-semibold leading-none text-[var(--muted)]">
+                  <span className="truncate text-right" title={blueName}>{blueName ?? ""}</span>
+                  <span className="text-[var(--hairline)]" aria-hidden="true">|</span>
+                  <span className="truncate" title={redName}>{redName ?? ""}</span>
+                </div>
+              </div>
+            );
+          })}
+        </div>
+      </div>
+    </>
+  );
+}
+
+function RosterPlayer({result, participant}: {result: PublicMatchResult; participant: PublicMatchResult["participants"][number]}) {
+  return (
+    <div className="flex min-w-0 items-center gap-1.5">
+      <LolIcon asset={participant.champion} version={result.ddragonVersion} size={18} className="shrink-0 rounded" />
+      <span className="min-w-0 truncate text-[11px] font-medium leading-none" title={participant.observedName}>{participant.observedName}</span>
     </div>
   );
 }
