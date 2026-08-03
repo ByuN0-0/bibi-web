@@ -4,12 +4,14 @@ import {useEffect, useState} from "react";
 import {useRouter} from "next/navigation";
 import TeamBuilder from "@/app/lol-statics/components/TeamBuilder";
 import PublicMatchHistory from "@/app/lol-statics/components/PublicMatchHistory";
+import type {PlayerParticipationMap} from "@/lib/lol/player-participation";
 import type {PlayerProfile, PublicMatchResult} from "@/lib/lol/types";
 
 type HubTab = "team" | "history";
 
-export default function PublicLolHub({players, playerLoadFailed, initialTab}: {
+export default function PublicLolHub({players, playerParticipation, playerLoadFailed, initialTab}: {
   players: PlayerProfile[];
+  playerParticipation: PlayerParticipationMap;
   playerLoadFailed: boolean;
   initialTab: HubTab;
 }) {
@@ -47,7 +49,7 @@ export default function PublicLolHub({players, playerLoadFailed, initialTab}: {
 
   function selectTab(next: HubTab) {
     setTab(next);
-    router.replace(next === "history" ? "/lol-member?tab=history" : "/lol-member", {scroll: false});
+    router.replace(next === "history" ? "/?tab=history" : "/", {scroll: false});
     if (next === "history" && !historyLoaded && !historyLoading) void loadHistory(0);
   }
 
@@ -63,7 +65,7 @@ export default function PublicLolHub({players, playerLoadFailed, initialTab}: {
             <p className="font-semibold text-[var(--warning)]">선수 목록을 불러오지 못했습니다.</p>
             <p className="mt-2 text-sm text-[var(--muted)]">잠시 후 페이지를 새로고침해 주세요.</p>
           </div>
-        ) : <TeamBuilder players={players} publicMode />}
+        ) : <TeamBuilder players={players} playerParticipation={playerParticipation} publicMode />}
       </div>
       <div role="tabpanel" aria-label="내전 기록" hidden={tab !== "history"}>
         <PublicMatchHistory

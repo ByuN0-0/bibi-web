@@ -2,9 +2,9 @@ import Image from "next/image";
 import Link from "next/link";
 
 const navigation = [
-  {href: "/#features", label: "기능"},
-  {href: "/#commands", label: "명령어"},
-  {href: "/lol-member", label: "롤 내전"},
+  {href: "/", label: "팀 편성"},
+  {href: "/?tab=history", label: "내전 기록"},
+  {href: "/about", label: "비비 소개"},
 ];
 
 export default function Header() {
@@ -35,19 +35,11 @@ export default function Header() {
           ))}
         </nav>
 
-        <div className="hidden sm:block">
-          <Link href="/lol-member" className="primary-button">
-            팀 편성 열기
-            <ArrowIcon />
-          </Link>
-        </div>
-
         <details className="group relative sm:hidden">
           <summary className="grid h-12 w-12 cursor-pointer list-none place-items-center rounded-full border border-[var(--hairline)] bg-white [&::-webkit-details-marker]:hidden" aria-label="메뉴 열기">
             <MenuIcon />
           </summary>
           <nav className="absolute right-0 top-14 w-52 overflow-hidden rounded-2xl border border-[var(--hairline-soft)] bg-white p-2 shadow-[var(--shadow-float)]" aria-label="모바일 메뉴">
-            <Link href="/" className="block rounded-xl px-4 py-3 text-sm font-semibold hover:bg-[var(--surface-soft)]">홈</Link>
             {navigation.map((item) => (
               <Link key={item.href} href={item.href} className="block rounded-xl px-4 py-3 text-sm font-semibold hover:bg-[var(--surface-soft)]">
                 {item.label}
@@ -58,10 +50,6 @@ export default function Header() {
       </div>
     </header>
   );
-}
-
-function ArrowIcon() {
-  return <svg aria-hidden="true" viewBox="0 0 20 20" className="h-4 w-4 fill-none stroke-current" strokeWidth="1.8"><path d="M4 10h12M11 5l5 5-5 5" /></svg>;
 }
 
 function MenuIcon() {

@@ -1,13 +1,31 @@
 "use client";
 
-import {useMemo, useRef, useState} from "react";
+import {useEffect, useMemo, useRef, useState} from "react";
 import RankTierIcon from "@/app/lol-statics/components/RankTierIcon";
 import {copyText} from "@/lib/clipboard";
+import type {PlayerParticipationMap} from "@/lib/lol/player-participation";
+import {
+  RECENT_ROSTER_STORAGE_KEY,
+  resolveRecentRoster,
+  toggleRosterPlayer,
+} from "@/lib/lol/recent-roster";
 import {formatTeamCompositionText} from "@/lib/lol/team-display";
 import {ROLE_LABEL, type PlayerProfile, type TeamAssignment, type TeamDraft} from "@/lib/lol/types";
 
-export default function TeamBuilder({players, publicMode = false}: {players: PlayerProfile[]; publicMode?: boolean}) {
+type TeamBuilderProps = {
+  players: PlayerProfile[];
+  playerParticipation?: PlayerParticipationMap;
+  publicMode?: boolean;
+};
+
+export default function TeamBuilder({
+  players,
+  playerParticipation = {},
+  publicMode = false,
+}: TeamBuilderProps) {
   const [selected, setSelected] = useState<string[]>([]);
+  const [recentRoster, setRecentRoster] = useState<string[] | null>(null);
+  const [rosterNotice, setRosterNotice] = useState("");
   const [draft, setDraft] = useState<TeamDraft | null>(null);
   const [pending, setPending] = useState(false);
   const [error, setError] = useState("");
@@ -15,13 +33,67 @@ export default function TeamBuilder({players, publicMode = false}: {players: Pla
   const [copyStatus, setCopyStatus] = useState<"idle" | "copied" | "failed">("idle");
   const resultRef = useRef<HTMLDivElement>(null);
   const selectedSet = useMemo(() => new Set(selected), [selected]);
+  const playersById = useMemo(
+    () => new Map(players.map((player) => [player.discordUserId, player])),
+    [players],
+  );
+  const selectedPlayers = useMemo(
+    () => selected.map((id) => playersById.get(id)).filter((player): player is PlayerProfile => Boolean(player)),
+    [playersById, selected],
+  );
 
-  function toggle(player: PlayerProfile) {
-    if (player.syncStatus !== "READY") return;
+  useEffect(() => {
+    if (!publicMode) return;
+    const stored = window.localStorage.getItem(RECENT_ROSTER_STORAGE_KEY);
+    if (!stored) return;
+    try {
+      const resolved = resolveRecentRoster(JSON.parse(stored), players);
+      if (resolved.status === "valid") setRecentRoster(resolved.playerIds);
+      else if (resolved.status === "invalid") {
+        setRosterNotice("최근 편성 명단에 현재 선택할 수 없는 선수가 있어 불러올 수 없습니다.");
+      }
+    } catch {
+      setRosterNotice("저장된 최근 편성 명단을 확인할 수 없습니다.");
+    }
+  }, [players, publicMode]);
+
+  function updateSelection(discordUserId: string) {
+    const player = playersById.get(discordUserId);
+    if (!player || player.syncStatus !== "READY") return;
+    const next = toggleRosterPlayer(selected, discordUserId);
+    if (next === selected) return;
+    setSelected(next);
     setDraft(null);
-    setSelected((current) => current.includes(player.discordUserId)
-      ? current.filter((id) => id !== player.discordUserId)
-      : current.length < 10 ? [...current, player.discordUserId] : current);
+    setError("");
+    setRosterNotice("");
+  }
+
+  function clearSelection() {
+    setSelected([]);
+    setDraft(null);
+    setError("");
+    setRosterNotice("");
+    setMobileListCollapsed(false);
+  }
+
+  function restoreRoster() {
+    if (!recentRoster) return;
+    setSelected([...recentRoster]);
+    setDraft(null);
+    setError("");
+    setRosterNotice("최근 편성 10명을 불러왔습니다.");
+    setMobileListCollapsed(false);
+  }
+
+  function storeRecentRoster() {
+    if (!publicMode || selected.length !== 10) return;
+    try {
+      window.localStorage.setItem(RECENT_ROSTER_STORAGE_KEY, JSON.stringify(selected));
+      setRecentRoster([...selected]);
+      setRosterNotice("");
+    } catch {
+      // Team generation should still succeed when browser storage is unavailable.
+    }
   }
 
   async function act(action: "generate" | "reroll" | "confirm") {
@@ -41,8 +113,11 @@ export default function TeamBuilder({players, publicMode = false}: {players: Pla
         }),
       });
       const result = await response.json();
-      if (!response.ok) setError(result.error ?? "팀을 편성하지 못했습니다.");
-      else if (publicMode) {
+      if (!response.ok) {
+        setError(result.error ?? "팀을 편성하지 못했습니다.");
+        return;
+      }
+      if (publicMode) {
         const now = Date.now();
         setDraft({
           schemaVersion: 1,
@@ -58,7 +133,10 @@ export default function TeamBuilder({players, publicMode = false}: {players: Pla
           expiresAt: now,
           updatedAt: now,
         });
-      } else setDraft(result.draft);
+        storeRecentRoster();
+      } else {
+        setDraft(result.draft);
+      }
       if (action !== "confirm") {
         setMobileListCollapsed(true);
         window.requestAnimationFrame(() => resultRef.current?.scrollIntoView({behavior: "smooth", block: "start"}));
@@ -79,44 +157,74 @@ export default function TeamBuilder({players, publicMode = false}: {players: Pla
   }
 
   return (
-    <section className="grid gap-3 xl:grid-cols-[0.9fr_1.1fr]">
+    <section className="grid gap-3 lg:grid-cols-[0.9fr_1.1fr]">
       <div className="surface-card p-4">
         <div className="flex items-end justify-between gap-4">
           <div>
             <h2 className="text-lg font-bold">참가 선수</h2>
-            <p className="mt-1 text-xs text-[var(--muted)]">동기화 완료 선수 중 정확히 10명</p>
+            <p className="mt-1 text-xs text-[var(--muted)]">자주 참가한 선수부터 표시 · 정확히 10명</p>
           </div>
           <span className={`rounded-full px-3 py-1 text-sm font-bold ${selected.length === 10 ? "bg-[var(--success-soft)] text-[var(--success)]" : "bg-[var(--surface-soft)] text-[var(--muted)]"}`} aria-live="polite">
             {selected.length} / 10
           </span>
         </div>
-        <div className={`mt-3 flex flex-wrap items-center gap-2 ${publicMode ? "max-sm:hidden" : ""}`}>
-          <button disabled={pending || selected.length !== 10 || draft?.status === "CONFIRMED"} onClick={() => act("generate")} className="primary-button min-h-10 px-4">팀 생성</button>
-          <button disabled={pending || !draft || draft.status === "CONFIRMED"} onClick={() => act("reroll")} className="secondary-button min-h-10 px-4">다시 편성</button>
-          {!publicMode && <button disabled={pending || !draft || draft.status === "CONFIRMED"} onClick={() => act("confirm")} className="secondary-button min-h-10 border-[#8bc9ad] px-4 text-[var(--success)]">확정</button>}
-          {pending && <span className="self-center text-xs text-[var(--muted)]" aria-live="polite">계산 중…</span>}
-        </div>
+
+        {publicMode ? (
+          <div className="mt-3 flex flex-wrap items-center gap-2">
+            <button type="button" disabled={pending || !recentRoster} onClick={restoreRoster} className="secondary-button min-h-10 px-3 text-xs">
+              {recentRoster ? "최근 편성 10명 불러오기" : "최근 편성 없음"}
+            </button>
+            <button type="button" disabled={pending || selected.length === 0} onClick={clearSelection} className="secondary-button min-h-10 px-3 text-xs">선택 초기화</button>
+            {pending && <span className="text-xs text-[var(--muted)]" aria-live="polite">계산 중…</span>}
+          </div>
+        ) : (
+          <div className="mt-3 flex flex-wrap items-center gap-2">
+            <button disabled={pending || selected.length !== 10 || draft?.status === "CONFIRMED"} onClick={() => act("generate")} className="primary-button min-h-10 px-4">팀 생성</button>
+            <button disabled={pending || !draft || draft.status === "CONFIRMED"} onClick={() => act("reroll")} className="secondary-button min-h-10 px-4">다시 편성</button>
+            <button disabled={pending || !draft || draft.status === "CONFIRMED"} onClick={() => act("confirm")} className="secondary-button min-h-10 border-[#8bc9ad] px-4 text-[var(--success)]">확정</button>
+            {pending && <span className="text-xs text-[var(--muted)]" aria-live="polite">계산 중…</span>}
+          </div>
+        )}
+
+        {rosterNotice && <p className={`mt-3 rounded-lg px-3 py-2 text-xs ${recentRoster ? "bg-[var(--success-soft)] text-[var(--success)]" : "bg-[var(--warning-soft)] text-[var(--warning)]"}`} role="status">{rosterNotice}</p>}
         {error && <p role="alert" className="mt-3 rounded-lg border border-[#f2b8aa] bg-[var(--error-soft)] px-3 py-2 text-sm text-[var(--error)]">{error}</p>}
+
+        {publicMode && selectedPlayers.length > 0 && !mobileListCollapsed && (
+          <div className="-mx-1 mt-3 overflow-x-auto px-1 pb-1 sm:hidden" aria-label="선택된 참가자">
+            <div className="flex w-max gap-1.5">
+              {selectedPlayers.map((player) => (
+                <button key={player.discordUserId} type="button" onClick={() => updateSelection(player.discordUserId)} className="inline-flex min-h-9 items-center gap-1.5 rounded-full bg-[var(--primary-soft)] px-3 text-xs font-semibold text-[var(--primary)]" aria-label={`${player.displayName} 선택 해제`}>
+                  {player.displayName}<span aria-hidden="true">×</span>
+                </button>
+              ))}
+            </div>
+          </div>
+        )}
+
         {mobileListCollapsed && draft?.composition && <div className="mt-3 flex items-center justify-between rounded-lg bg-[var(--surface-soft)] p-2.5 sm:hidden"><p className="text-sm font-semibold">10명 선택 완료</p><button type="button" onClick={() => setMobileListCollapsed(false)} className="text-xs font-bold text-[var(--primary)]">선수 변경</button></div>}
-        <div className={`mt-3 gap-1.5 sm:grid sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-2 ${mobileListCollapsed && draft?.composition ? "hidden" : "grid"}`}>
+        <div className={`mt-3 gap-1.5 sm:grid sm:grid-cols-2 ${mobileListCollapsed && draft?.composition ? "hidden" : "grid"}`}>
           {players.map((player) => {
             const active = selectedSet.has(player.discordUserId);
             const ready = player.syncStatus === "READY";
+            const matchCount = playerParticipation[player.discordUserId]?.matchCount ?? 0;
             return (
               <button
                 key={player.discordUserId}
                 type="button"
                 disabled={!ready}
                 aria-pressed={active}
-                aria-label={`${player.displayName}, ${player.riotGameName}#${player.riotTagLine}, ${ready ? active ? "선택됨" : "선택 가능" : syncStatusLabel(player.syncStatus)}`}
+                aria-label={`${player.displayName}, ${player.riotGameName}#${player.riotTagLine}, ${publicMode ? matchCount ? `내전 ${matchCount}판, ` : "첫 참가, " : ""}${ready ? active ? "선택됨" : "선택 가능" : syncStatusLabel(player.syncStatus)}`}
                 title={ready ? undefined : syncStatusLabel(player.syncStatus)}
-                onClick={() => toggle(player)}
-                className={`min-h-[64px] rounded-lg border px-3 py-2.5 text-left ${active ? "border-[var(--primary)] bg-[var(--primary-soft)] shadow-[inset_0_0_0_1px_var(--primary)]" : "border-[var(--hairline-soft)] bg-white hover:border-[var(--hairline)] hover:shadow-sm"} disabled:cursor-not-allowed disabled:bg-[var(--surface-soft)] disabled:opacity-55`}
+                onClick={() => updateSelection(player.discordUserId)}
+                className={`min-h-[68px] rounded-lg border px-3 py-2.5 text-left ${active ? "border-[var(--primary)] bg-[var(--primary-soft)] shadow-[inset_0_0_0_1px_var(--primary)]" : "border-[var(--hairline-soft)] bg-white hover:border-[var(--hairline)] hover:shadow-sm"} disabled:cursor-not-allowed disabled:bg-[var(--surface-soft)] disabled:opacity-55`}
               >
                 <span className="flex items-start justify-between gap-3">
-                  <span className="min-w-0">
+                  <span className="min-w-0 flex-1">
                     <span className="block truncate text-sm font-semibold">{player.displayName}</span>
-                    <span className="mt-1 block truncate text-xs text-[var(--muted)]">{player.riotGameName}#{player.riotTagLine}</span>
+                    <span className="mt-1 flex min-w-0 items-center justify-between gap-2 text-xs text-[var(--muted)]">
+                      <span className="truncate">{player.riotGameName}#{player.riotTagLine}</span>
+                      {publicMode && <span className="shrink-0 font-semibold">{matchCount ? `내전 ${matchCount}판` : "첫 참가"}</span>}
+                    </span>
                   </span>
                   {active && <span className="grid h-5 w-5 shrink-0 place-items-center rounded-full bg-[var(--primary)] text-white" aria-hidden="true">✓</span>}
                 </span>
@@ -127,20 +235,32 @@ export default function TeamBuilder({players, publicMode = false}: {players: Pla
         </div>
       </div>
 
-      <div ref={resultRef} className="surface-card scroll-mt-24 p-4">
+      <div ref={resultRef} className={`surface-card scroll-mt-24 p-4 ${!draft?.composition ? "max-sm:hidden" : ""}`}>
         {!draft?.composition ? (
-          <div className="grid min-h-[220px] place-items-center text-center">
-            <div>
-              <span className="mx-auto grid h-12 w-12 place-items-center rounded-full bg-[var(--primary-soft)] text-xl text-[var(--primary)]" aria-hidden="true">⚔</span>
-              <p className="mt-3 font-semibold">편성 결과가 여기에 표시됩니다.</p>
-              <p className="mt-1 text-xs text-[var(--muted)]">선수 10명을 선택해 주세요.</p>
+          publicMode ? (
+            <SelectionRoster
+              players={selectedPlayers}
+              pending={pending}
+              onRemove={updateSelection}
+              onGenerate={() => void act("generate")}
+            />
+          ) : (
+            <div className="grid min-h-[220px] place-items-center text-center">
+              <div>
+                <span className="mx-auto grid h-12 w-12 place-items-center rounded-full bg-[var(--primary-soft)] text-xl text-[var(--primary)]" aria-hidden="true">⚔</span>
+                <p className="mt-3 font-semibold">편성 결과가 여기에 표시됩니다.</p>
+                <p className="mt-1 text-xs text-[var(--muted)]">선수 10명을 선택해 주세요.</p>
+              </div>
             </div>
-          </div>
+          )
         ) : (
           <div>
             <div className="flex flex-wrap items-center justify-between gap-3">
               <div className="flex items-center gap-2"><p className="text-xs text-[var(--muted)]">균형 등급</p><p className="text-2xl font-bold text-[var(--success)]">{draft.composition.balanceGrade}</p>{draft.status === "CONFIRMED" && <span className="rounded-full bg-[var(--success-soft)] px-2 py-1 text-[10px] font-bold text-[var(--success)]">확정됨</span>}</div>
-              <button type="button" onClick={() => void copyComposition()} className="min-h-10 rounded-lg border border-[var(--hairline)] bg-white px-3 text-xs font-bold hover:bg-[var(--surface-soft)]">{copyStatus === "copied" ? "복사 완료 ✓" : "텍스트 복사"}</button>
+              <div className="flex flex-wrap gap-2">
+                {publicMode && <button type="button" disabled={pending} onClick={() => void act("reroll")} className="min-h-10 rounded-lg border border-[var(--hairline)] bg-white px-3 text-xs font-bold hover:bg-[var(--surface-soft)]">{pending ? "계산 중…" : "다시 편성"}</button>}
+                <button type="button" onClick={() => void copyComposition()} className="min-h-10 rounded-lg border border-[var(--hairline)] bg-white px-3 text-xs font-bold hover:bg-[var(--surface-soft)]">{copyStatus === "copied" ? "복사 완료 ✓" : "텍스트 복사"}</button>
+              </div>
             </div>
             {copyStatus === "failed" && <p role="alert" className="mt-2 rounded-lg bg-[var(--error-soft)] px-3 py-2 text-xs text-[var(--error)]">복사하지 못했습니다. 브라우저 권한을 확인하고 다시 시도해 주세요.</p>}
             <div className="mt-3 grid gap-3 md:grid-cols-2">
@@ -153,8 +273,55 @@ export default function TeamBuilder({players, publicMode = false}: {players: Pla
           </div>
         )}
       </div>
-      {publicMode && <div className="fixed inset-x-0 bottom-0 z-40 border-t border-[var(--hairline)] bg-white/95 px-4 py-3 shadow-[0_-8px_24px_rgba(0,0,0,0.08)] backdrop-blur sm:hidden"><div className="mx-auto flex max-w-md items-center gap-3"><div className="min-w-20"><p className="text-[10px] text-[var(--muted)]">선택 선수</p><p className="text-sm font-bold">{selected.length} / 10명</p></div><button disabled={pending || selected.length !== 10} onClick={() => act(draft ? "reroll" : "generate")} className="primary-button flex-1">{pending ? "계산 중…" : draft ? "다시 편성" : selected.length === 10 ? "팀 생성" : `${10 - selected.length}명 더 선택`}</button></div></div>}
+
+      {publicMode && <div className="fixed inset-x-0 bottom-0 z-40 border-t border-[var(--hairline)] bg-white/95 px-4 py-3 shadow-[0_-8px_24px_rgba(0,0,0,0.08)] backdrop-blur sm:hidden"><div className="mx-auto flex max-w-md items-center gap-3"><div className="min-w-20"><p className="text-[10px] text-[var(--muted)]">선택 선수</p><p className="text-sm font-bold">{selected.length} / 10명</p></div><button disabled={pending || selected.length !== 10} onClick={() => void act(draft ? "reroll" : "generate")} className="primary-button flex-1">{pending ? "계산 중…" : draft ? "다시 편성" : selected.length === 10 ? "팀 생성" : `${10 - selected.length}명 더 선택`}</button></div></div>}
     </section>
+  );
+}
+
+function SelectionRoster({
+  players,
+  pending,
+  onRemove,
+  onGenerate,
+}: {
+  players: PlayerProfile[];
+  pending: boolean;
+  onRemove: (discordUserId: string) => void;
+  onGenerate: () => void;
+}) {
+  return (
+    <div>
+      <div className="flex items-end justify-between gap-4">
+        <div>
+          <h2 className="text-lg font-bold">선택 명단</h2>
+          <p className="mt-1 text-xs text-[var(--muted)]">이름을 누르면 명단에서 제외됩니다.</p>
+        </div>
+        <span className={`rounded-full px-3 py-1 text-sm font-bold ${players.length === 10 ? "bg-[var(--success-soft)] text-[var(--success)]" : "bg-[var(--surface-soft)] text-[var(--muted)]"}`} aria-live="polite">{players.length} / 10</span>
+      </div>
+      <ol className="mt-4 grid gap-2 sm:grid-cols-2" aria-label="선택한 참가자 10명">
+        {Array.from({length: 10}, (_, index) => {
+          const player = players[index];
+          return player ? (
+            <li key={player.discordUserId}>
+              <button type="button" onClick={() => onRemove(player.discordUserId)} className="flex min-h-12 w-full items-center gap-3 rounded-lg border border-[var(--primary)] bg-[var(--primary-soft)] px-3 text-left hover:bg-white" aria-label={`${index + 1}번 ${player.displayName} 선택 해제`}>
+                <span className="grid h-6 w-6 shrink-0 place-items-center rounded-full bg-[var(--primary)] text-[11px] font-bold text-white">{index + 1}</span>
+                <span className="min-w-0 flex-1 truncate text-sm font-semibold">{player.displayName}</span>
+                <span className="text-[var(--primary)]" aria-hidden="true">×</span>
+              </button>
+            </li>
+          ) : (
+            <li key={`empty-${index}`} className="flex min-h-12 items-center gap-3 rounded-lg border border-dashed border-[var(--hairline)] bg-[var(--surface-soft)] px-3 text-[var(--muted-soft)]">
+              <span className="grid h-6 w-6 shrink-0 place-items-center rounded-full border border-[var(--hairline)] bg-white text-[11px] font-bold">{index + 1}</span>
+              <span className="text-xs">선수를 선택해 주세요</span>
+            </li>
+          );
+        })}
+      </ol>
+      <button type="button" disabled={pending || players.length !== 10} onClick={onGenerate} className="primary-button mt-4 w-full">
+        {pending ? "균형 계산 중…" : players.length === 10 ? "이 10명으로 팀 생성" : `${10 - players.length}명 더 선택해 주세요`}
+      </button>
+    </div>
   );
 }
 
@@ -166,14 +333,12 @@ function Team({title, color, assignments}: {title: string; color: "blue" | "red"
     <div className={`rounded-xl border p-3 ${theme}`}>
       <h3 className="text-sm font-bold">{title}</h3>
       <div className="mt-2 space-y-1.5">
-        {assignments.map((player) => {
-          return (
-            <div key={player.role} className="flex h-16 items-center gap-2.5 rounded-lg border border-black/[0.05] bg-white px-2.5 py-2 text-[var(--ink)]">
-              <RankTierIcon rank={player.rank} size={36} />
-              <div className="min-w-0 flex-1"><div className="flex items-center justify-between gap-2"><span className="text-[11px] font-bold text-[var(--muted)]">{ROLE_LABEL[player.role]}</span><span className="truncate text-[10px] text-[var(--muted)]">{player.rankQueue === "SOLO" ? "솔랭" : player.rankQueue === "FLEX" ? "자랭" : "랭크"} · {player.rank}</span></div><div className="mt-0.5 flex min-w-0 items-center gap-1"><p className="min-w-0 flex-1 truncate text-sm font-semibold">{player.displayName}</p>{player.offRole && <span className="shrink-0 rounded bg-[var(--warning-soft)] px-1.5 py-0.5 text-[9px] font-bold text-[var(--warning)]">오프롤</span>}{player.lowConfidence && <span className="shrink-0 rounded bg-[var(--warning-soft)] px-1.5 py-0.5 text-[9px] font-bold text-[var(--warning)]">낮은 신뢰도</span>}</div></div>
-            </div>
-          );
-        })}
+        {assignments.map((player) => (
+          <div key={player.role} className="flex h-16 items-center gap-2.5 rounded-lg border border-black/[0.05] bg-white px-2.5 py-2 text-[var(--ink)]">
+            <RankTierIcon rank={player.rank} size={36} />
+            <div className="min-w-0 flex-1"><div className="flex items-center justify-between gap-2"><span className="text-[11px] font-bold text-[var(--muted)]">{ROLE_LABEL[player.role]}</span><span className="truncate text-[10px] text-[var(--muted)]">{player.rankQueue === "SOLO" ? "솔랭" : player.rankQueue === "FLEX" ? "자랭" : "랭크"} · {player.rank}</span></div><div className="mt-0.5 flex min-w-0 items-center gap-1"><p className="min-w-0 flex-1 truncate text-sm font-semibold">{player.displayName}</p>{player.offRole && <span className="shrink-0 rounded bg-[var(--warning-soft)] px-1.5 py-0.5 text-[9px] font-bold text-[var(--warning)]">오프롤</span>}{player.lowConfidence && <span className="shrink-0 rounded bg-[var(--warning-soft)] px-1.5 py-0.5 text-[9px] font-bold text-[var(--warning)]">낮은 신뢰도</span>}</div></div>
+          </div>
+        ))}
       </div>
     </div>
   );

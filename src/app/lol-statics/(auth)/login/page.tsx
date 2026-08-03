@@ -19,7 +19,7 @@ export default function LoginPage() {
           <p className="mt-3 text-sm leading-6 text-[var(--muted)]">등록 선수와 전적, 팀 편성 기록을 관리하려면 로그인하세요.</p>
         </div>
         <LoginForm />
-        <Link href="/lol-member" className="mt-7 flex min-h-11 items-center justify-center text-sm font-semibold text-[var(--muted)] hover:text-[var(--ink)]">공개 팀 편성으로 돌아가기</Link>
+        <Link href="/" className="mt-7 flex min-h-11 items-center justify-center text-sm font-semibold text-[var(--muted)] hover:text-[var(--ink)]">공개 팀 편성으로 돌아가기</Link>
       </section>
     </main>
   );

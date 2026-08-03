@@ -2,9 +2,9 @@ import Image from "next/image";
 import Link from "next/link";
 
 const links = [
-  {href: "/", label: "홈"},
-  {href: "/#commands", label: "명령어"},
-  {href: "/lol-member", label: "롤 내전"},
+  {href: "/", label: "팀 편성"},
+  {href: "/?tab=history", label: "내전 기록"},
+  {href: "/about", label: "비비 소개"},
   {href: "/lol-statics/login", label: "관리자"},
 ];
 
