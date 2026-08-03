@@ -285,7 +285,9 @@ export type MatchResult = {
   updatedAt: number;
 };
 
-export type PublicMatchResultParticipant = Omit<MatchResultParticipant, "discordUserId">;
+export type PublicMatchResultParticipant = Omit<MatchResultParticipant, "discordUserId"> & {
+  registeredPlayerName: string | null;
+};
 
 export type PublicMatchResult = Pick<
   MatchResult,

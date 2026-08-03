@@ -1,5 +1,5 @@
 import {NextRequest, NextResponse} from "next/server";
-import {listPublishedMatchResultsPage} from "@/lib/lol/repository";
+import {listPlayers, listPublishedMatchResultsPage} from "@/lib/lol/repository";
 import {toPublicMatchResult} from "@/lib/lol/public-match-result";
 
 const PAGE_SIZE = 10;
@@ -11,9 +11,17 @@ export async function GET(request: NextRequest) {
     return NextResponse.json({error: "올바른 기록 위치를 지정해 주세요."}, {status: 400});
   }
   try {
-    const page = await listPublishedMatchResultsPage(offset, PAGE_SIZE);
+    const [page, players] = await Promise.all([
+      listPublishedMatchResultsPage(offset, PAGE_SIZE),
+      listPlayers(),
+    ]);
+    const playerNamesById = new Map(players.map((player) => [
+      player.discordUserId,
+      player.displayName,
+    ]));
     return NextResponse.json({
-      results: page.results.map(toPublicMatchResult),
+      results: page.results.map((result) =>
+        toPublicMatchResult(result, playerNamesById)),
       nextOffset: page.nextOffset,
     });
   } catch {

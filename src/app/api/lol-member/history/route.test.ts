@@ -1,17 +1,24 @@
 import {beforeEach, describe, expect, it, vi} from "vitest";
 import {NextRequest} from "next/server";
-import {makeMatchInput} from "@/lib/lol/match-result-test-fixtures";
+import {makeMatchInput, makePlayers} from "@/lib/lol/match-result-test-fixtures";
 import type {MatchResult} from "@/lib/lol/types";
 
-vi.mock("@/lib/lol/repository", () => ({listPublishedMatchResultsPage: vi.fn()}));
+vi.mock("@/lib/lol/repository", () => ({
+  listPlayers: vi.fn(),
+  listPublishedMatchResultsPage: vi.fn(),
+}));
 
-import {listPublishedMatchResultsPage} from "@/lib/lol/repository";
+import {listPlayers, listPublishedMatchResultsPage} from "@/lib/lol/repository";
 import {GET} from "@/app/api/lol-member/history/route";
 
 const mockedList = vi.mocked(listPublishedMatchResultsPage);
+const mockedPlayers = vi.mocked(listPlayers);
 
 describe("public match history API", () => {
-  beforeEach(() => mockedList.mockReset());
+  beforeEach(() => {
+    mockedList.mockReset();
+    mockedPlayers.mockReset().mockResolvedValue(makePlayers());
+  });
 
   it("returns ten sanitized results at the requested offset", async () => {
     const input = makeMatchInput();
@@ -22,7 +29,11 @@ describe("public match history API", () => {
         matchResultId: "match-1",
         source: "CHAT_SCREENSHOT",
         sourceHash: "secret-hash",
-        participants: input.participants.map((participant) => ({...participant, guest: false, discordUserId: "123456"})),
+        participants: input.participants.map((participant, index) => ({
+          ...participant,
+          guest: false,
+          discordUserId: `player-${index + 1}`,
+        })),
         revision: 1,
         correctedBy: "ingest-api",
         corrections: [],
@@ -37,6 +48,7 @@ describe("public match history API", () => {
     expect(body.nextOffset).toBe(20);
     expect(body.results[0]).not.toHaveProperty("sourceHash");
     expect(body.results[0].participants[0]).not.toHaveProperty("discordUserId");
+    expect(body.results[0].participants[0].registeredPlayerName).toBe("선수 1");
   });
 
   it("rejects invalid offsets", async () => {

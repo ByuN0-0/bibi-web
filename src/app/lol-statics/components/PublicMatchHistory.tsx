@@ -137,8 +137,12 @@ function RosterSummary({result, playerNames}: {result: PublicMatchResult; player
         <div className="space-y-px">
           {blueParticipants.map((blueParticipant, index) => {
             const redParticipant = redParticipants[index];
-            const blueName = playerNames[playerNameKey(blueParticipant.observedName)];
-            const redName = redParticipant ? playerNames[playerNameKey(redParticipant.observedName)] : undefined;
+            const blueName = blueParticipant.registeredPlayerName
+              ?? playerNames[playerNameKey(blueParticipant.observedName)];
+            const redName = redParticipant
+              ? redParticipant.registeredPlayerName
+                ?? playerNames[playerNameKey(redParticipant.observedName)]
+              : undefined;
             return (
               <div key={blueParticipant.role} className="grid min-w-0 grid-cols-[minmax(0,145px)_minmax(0,145px)_minmax(0,150px)] items-center gap-2">
                 <RosterPlayer result={result} participant={blueParticipant} />
@@ -174,7 +178,8 @@ function RosterColumn({result, team, playerNames}: {result: PublicMatchResult; t
       <p className={`mb-px text-[9px] font-bold uppercase leading-none tracking-wide ${blue ? "text-[#3269bd]" : "text-[#c43652]"}`}>{blue ? "Blue team" : "Red team"}</p>
       <div className="space-y-px">
         {participants.map((participant) => {
-          const displayName = playerNames[playerNameKey(participant.observedName)];
+          const displayName = participant.registeredPlayerName
+            ?? playerNames[playerNameKey(participant.observedName)];
           return (
             <div key={`${participant.role}-${participant.observedName}`} className="flex min-w-0 items-center gap-1.5">
               <LolIcon asset={participant.champion} version={result.ddragonVersion} size={17} className="shrink-0 rounded" />

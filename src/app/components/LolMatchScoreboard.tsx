@@ -157,8 +157,12 @@ function MobilePlayerCard({participant, version, durationSeconds, compact, playe
 }
 
 function PlayerMeta({participant, playerRank}: {participant: ScoreboardParticipant; playerRank?: MatchPlayerRankMap[string]}) {
+  const registeredPlayerName = "registeredPlayerName" in participant
+    ? participant.registeredPlayerName
+    : null;
   return (
     <p className="mt-px flex min-h-[18px] items-center gap-1 text-[11px] leading-none text-[var(--muted)]">
+      {registeredPlayerName && <><span className="truncate font-semibold">{registeredPlayerName}</span><span aria-hidden="true">·</span></>}
       {playerRank && <><RankTierIcon rank={playerRank.rank} size={18} /><span>현재 {playerRank.rank} · {playerRank.queue}</span><span aria-hidden="true">·</span></>}
       <span className="truncate">Lv.{participant.level} · {participant.champion.name}{participant.guest ? " · 게스트" : ""}</span>
     </p>
