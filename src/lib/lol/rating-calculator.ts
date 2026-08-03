@@ -7,6 +7,11 @@ import {
 } from "@/lib/lol/types";
 
 const HALF_LIFE_MS = 14 * 24 * 60 * 60 * 1000;
+export const DEFAULT_TIER_PRIOR = 0.35;
+const PRIOR_MATCHES = 10;
+const FLEX_EVIDENCE_WEIGHT = 0.30;
+const PERFORMANCE_PRIOR_MATCHES = 5;
+const FORM_ADJUSTMENT_RANGE = 0.30;
 
 export function calculateRoleStats(
   solo: RankInfo,
@@ -18,7 +23,11 @@ export function calculateRoleStats(
   return Object.fromEntries(ROLES.map((role) => {
     const roleMatches = matches
       .filter((match) => match.role === role)
-      .map((match) => ({match, weight: Math.pow(0.5, Math.max(now - match.playedAt, 0) / HALF_LIFE_MS)}));
+      .map((match) => ({
+        match,
+        weight: Math.pow(0.5, Math.max(now - match.playedAt, 0) / HALF_LIFE_MS)
+          * queueWeight(match.queueId),
+      }));
     if (!roleMatches.length) return [role, emptyRoleStats(tier)];
 
     const totalWeight = roleMatches.reduce((sum, value) => sum + value.weight, 0);
@@ -36,8 +45,7 @@ export function calculateRoleStats(
     const objective = average("objectiveParticipationDiff");
     const deaths = average("deathRateDiff");
     const form = formScore(role, gold, xp, cs, damage, kp, vision, cc, objective, deaths);
-    const confidence = Math.min(roleMatches.length / 5, 1);
-    const adjustedForm = 0.5 + confidence * (form - 0.5);
+    const confidence = totalWeight / (totalWeight + PERFORMANCE_PRIOR_MATCHES);
     return [role, {
       sampleCount: roleMatches.length,
       confidence,
@@ -50,22 +58,43 @@ export function calculateRoleStats(
       crowdControlPerMinuteDiff: cc,
       objectiveParticipationDiff: objective,
       formScore: form,
-      balanceSignal: 0.6 * tier + 0.4 * adjustedForm,
+      balanceSignal: clamp(tier + confidence * FORM_ADJUSTMENT_RANGE * (form - 0.5), 0, 1),
     } satisfies RoleStats];
   })) as Partial<Record<Role, RoleStats>>;
 }
 
-export function tierScore(solo: RankInfo, flex: RankInfo) {
-  const soloRanked = ranked(solo);
-  const flexRanked = ranked(flex);
-  if (soloRanked && flexRanked) return 0.7 * rankValue(solo) + 0.3 * rankValue(flex);
-  if (soloRanked) return rankValue(solo);
-  if (flexRanked) return rankValue(flex);
-  return 0.35;
+export function tierScore(solo: RankInfo, flex: RankInfo, prior = DEFAULT_TIER_PRIOR) {
+  const soloEvidence = evidence(solo, 1);
+  const flexEvidence = evidence(flex, FLEX_EVIDENCE_WEIGHT);
+  const total = PRIOR_MATCHES + soloEvidence + flexEvidence;
+  return (clamp(prior, 0, 1) * PRIOR_MATCHES
+    + (soloEvidence ? rankValue(solo) * soloEvidence : 0)
+    + (flexEvidence ? rankValue(flex) * flexEvidence : 0)) / total;
+}
+
+export function observedRankScore(solo: RankInfo, flex: RankInfo) {
+  const soloEvidence = evidence(solo, 1);
+  const flexEvidence = evidence(flex, FLEX_EVIDENCE_WEIGHT);
+  const total = soloEvidence + flexEvidence;
+  if (!total) return null;
+  return ((soloEvidence ? rankValue(solo) * soloEvidence : 0)
+    + (flexEvidence ? rankValue(flex) * flexEvidence : 0)) / total;
 }
 
 function ranked(rank: RankInfo) {
   return !!rank?.tier && rank.tier !== "UNRANKED";
+}
+
+function evidence(rank: RankInfo, queueEvidenceWeight: number) {
+  if (!ranked(rank)) return 0;
+  return Math.min(Math.max(1, rank.wins + rank.losses), 40) * queueEvidenceWeight;
+}
+
+function queueWeight(queueId?: number) {
+  if (queueId === 440) return 0.35;
+  if (queueId === 400 || queueId === 480 || queueId === 490) return 0.15;
+  // Legacy documents did not store queueId and only contained ranked games.
+  return 1;
 }
 
 function rankValue(rank: RankInfo) {

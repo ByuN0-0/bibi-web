@@ -9,5 +9,8 @@ export async function rebuildInhouseRatingSnapshot() {
 }
 
 export async function getOrRebuildInhouseRatingSnapshot() {
-  return await getInhouseRatingSnapshot() ?? rebuildInhouseRatingSnapshot();
+  const current = await getInhouseRatingSnapshot();
+  return !current || current.schemaVersion < 2
+    ? rebuildInhouseRatingSnapshot()
+    : current;
 }

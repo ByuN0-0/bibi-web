@@ -1,4 +1,4 @@
-export const ALGORITHM_VERSION = "team-balancing-v2";
+export const ALGORITHM_VERSION = "team-balancing-v3";
 export const ROLES = ["TOP", "JUNGLE", "MIDDLE", "BOTTOM", "UTILITY"] as const;
 export type Role = (typeof ROLES)[number];
 export const MATCH_TEAMS = ["BLUE", "RED"] as const;
@@ -38,6 +38,7 @@ export type RoleStats = {
 export type MatchPerformance = {
   matchId: string;
   playedAt: number;
+  queueId?: number;
   role: Role;
   goldDiff15: number;
   xpDiff15: number;
@@ -113,6 +114,12 @@ export type TeamAssignment = {
 
 export type InhousePlayerRating = {
   discordUserId: string;
+  elo: number;
+  matchCount: number;
+  roleRatings?: Partial<Record<Role, InhouseRoleRating>>;
+};
+
+export type InhouseRoleRating = {
   elo: number;
   matchCount: number;
 };

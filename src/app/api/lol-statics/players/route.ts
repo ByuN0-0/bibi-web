@@ -21,7 +21,7 @@ export async function POST(request: NextRequest) {
     || existing.value.riotTagLine !== input.riotTagLine;
   const unranked = {tier: "UNRANKED", division: "", leaguePoints: 0, wins: 0, losses: 0};
   const profile: PlayerProfile = {
-    schemaVersion: 1,
+    schemaVersion: existing?.value.schemaVersion ?? 2,
     discordUserId: input.discordUserId,
     displayName: input.displayName,
     riotGameName: input.riotGameName,

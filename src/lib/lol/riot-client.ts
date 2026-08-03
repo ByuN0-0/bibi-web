@@ -11,8 +11,9 @@ import {
 
 const REQUEST_INTERVAL_MS = 1_300;
 const MAX_MATCH_AGE_MS = 60 * 24 * 60 * 60 * 1000;
-const MATCHES_PER_QUEUE = 8;
-const MAX_RECENT_MATCHES = MATCHES_PER_QUEUE * 2;
+const PERFORMANCE_QUEUES = [420, 440, 400, 480, 490] as const;
+const MATCHES_PER_QUEUE = 6;
+const MAX_RECENT_MATCHES = 30;
 const unranked = (): RankInfo => ({tier: "UNRANKED", division: "", leaguePoints: 0, wins: 0, losses: 0});
 
 let throttleQueue = Promise.resolve();
@@ -37,7 +38,7 @@ export async function loadRiotProfile(player: PlayerProfile): Promise<RiotSyncDa
     : await client.resolveAccountByRiotId(lookup.gameName, lookup.tagLine);
   const [entries, matches] = await Promise.all([
     client.getLeagueEntries(account.puuid),
-    client.getRecentRankedMatches(account.puuid),
+    client.getRecentPerformanceMatches(account.puuid),
   ]);
   const ranks = parseRanks(entries);
   const cutoff = Date.now() - MAX_MATCH_AGE_MS;
@@ -94,12 +95,10 @@ class RiotClient {
       .map(object);
   }
 
-  async getRecentRankedMatches(puuid: string) {
-    const [soloIds, flexIds] = await Promise.all([
-      this.getMatchIds(puuid, 420),
-      this.getMatchIds(puuid, 440),
-    ]);
-    const ids = [...new Set([...soloIds, ...flexIds])];
+  async getRecentPerformanceMatches(puuid: string) {
+    const byQueue = await Promise.all(PERFORMANCE_QUEUES.map((queue) =>
+      this.getMatchIds(puuid, queue)));
+    const ids = [...new Set(byQueue.flat())];
     const matches = await Promise.all(ids.map((id) => this.getMatch(id)));
     return matches
       .sort((left, right) => numberAt(objectAt(right, "info"), "gameStartTimestamp")
@@ -209,6 +208,7 @@ export function parsePerformance(
   return {
     matchId: stringAt(objectAt(match, "metadata"), "matchId"),
     playedAt: numberAt(info, "gameStartTimestamp"),
+    queueId: numberAt(info, "queueId"),
     role,
     goldDiff15: numberAt(playerFrame, "totalGold") - numberAt(opponentFrame, "totalGold"),
     xpDiff15: numberAt(playerFrame, "xp") - numberAt(opponentFrame, "xp"),

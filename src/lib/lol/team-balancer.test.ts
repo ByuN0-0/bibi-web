@@ -5,7 +5,7 @@ import {ALGORITHM_VERSION, ROLES, type PlayerProfile, type RoleStats} from "@/li
 
 function players(): PlayerProfile[] {
   return fixture.players.map((player) => ({
-    schemaVersion: 1, discordUserId: player.id, displayName: player.name,
+    schemaVersion: 2, discordUserId: player.id, displayName: player.name,
     riotGameName: player.name, riotTagLine: "KR1", puuid: player.id, summonerId: player.id,
     primaryRole: player.primaryRole as PlayerProfile["primaryRole"],
     secondaryRole: player.secondaryRole as PlayerProfile["secondaryRole"],

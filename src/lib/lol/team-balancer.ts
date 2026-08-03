@@ -8,10 +8,18 @@ import {
   type TeamComposition,
   type TeamSession,
 } from "@/lib/lol/types";
+import {
+  DEFAULT_TIER_PRIOR,
+  observedRankScore,
+  tierScore,
+} from "@/lib/lol/rating-calculator";
 
 const ROLES: Role[] = ["TOP", "JUNGLE", "MIDDLE", "BOTTOM", "UTILITY"];
 const PLAYER_COUNT = 10;
 const FULL_PLAYER_MASK = (1 << PLAYER_COUNT) - 1;
+const OVERALL_RATING_WEIGHT = 0.30;
+const ROLE_RATING_WEIGHT = 0.70;
+const MAX_INHOUSE_WEIGHT = 0.30;
 
 type Candidate = {
   signature: string;
@@ -46,7 +54,9 @@ export function balanceTeam(
   const ordered = [...players].sort((left, right) =>
     left.discordUserId < right.discordUserId ? -1 : left.discordUserId > right.discordUserId ? 1 : 0,
   );
-  const signals = ordered.map((player) => ROLES.map((role) => signal(player, role, ratings.get(player.discordUserId))));
+  const prior = groupPrior(ordered);
+  const signals = ordered.map((player) => ROLES.map((role) =>
+    signal(player, role, ratings.get(player.discordUserId), prior)));
   const preferences = ordered.map((player) => ROLES.map((role) => preferencePenalty(player, role)));
   const minimumOffRoleMemo = Array.from({length: ROLES.length + 1}, () =>
     new Array<number>(1 << PLAYER_COUNT).fill(-1));
@@ -250,13 +260,48 @@ function toComposition(candidate: Candidate, players: PlayerProfile[]): TeamComp
   };
 }
 
-function signal(player: PlayerProfile, role: Role, rating?: InhousePlayerRating) {
-  const performance = player.roleStats?.[role]?.balanceSignal ?? 0.35;
+function signal(
+  player: PlayerProfile,
+  role: Role,
+  rating: InhousePlayerRating | undefined,
+  prior: number,
+) {
+  const defaultTier = tierScore(player.soloRank, player.flexRank);
+  const currentTier = tierScore(player.soloRank, player.flexRank, prior);
+  const stored = player.schemaVersion >= 2
+    ? player.roleStats?.[role]?.balanceSignal
+    : undefined;
+  const performance = stored === undefined
+    ? currentTier
+    : Math.max(0, Math.min(1, stored + currentTier - defaultTier));
   if (!rating?.matchCount) return performance;
-  const inhouse = Math.max(0, Math.min(1, 0.5 + (rating.elo - 1500) / 800));
-  const weight = Math.min(rating.matchCount / 10, 1) * 0.30;
+  const roleRating = rating.roleRatings?.[role];
+  const effectiveElo = OVERALL_RATING_WEIGHT * rating.elo
+    + ROLE_RATING_WEIGHT * (roleRating?.elo ?? 1500);
+  const inhouse = Math.max(0, Math.min(1, 0.5 + (effectiveElo - 1500) / 800));
+  const evidence = OVERALL_RATING_WEIGHT * rating.matchCount
+    + ROLE_RATING_WEIGHT * (roleRating?.matchCount ?? 0);
+  const weight = Math.min(evidence / 10, 1) * MAX_INHOUSE_WEIGHT;
   return performance * (1 - weight) + inhouse * weight;
 }
+
+function groupPrior(players: PlayerProfile[]) {
+  let observed = players
+    .map((player) => observedRankScore(player.soloRank, UNRANKED))
+    .filter((value): value is number => value !== null)
+    .sort((left, right) => left - right);
+  if (!observed.length) observed = players
+    .map((player) => observedRankScore(player.soloRank, player.flexRank))
+    .filter((value): value is number => value !== null)
+    .sort((left, right) => left - right);
+  if (!observed.length) return DEFAULT_TIER_PRIOR;
+  const middle = Math.floor(observed.length / 2);
+  return observed.length % 2
+    ? observed[middle]
+    : (observed[middle - 1] + observed[middle]) / 2;
+}
+
+const UNRANKED = {tier: "UNRANKED", division: "", leaguePoints: 0, wins: 0, losses: 0};
 
 function preferencePenalty(player: PlayerProfile, role: Role) {
   if (player.primaryRole === role) return 0;

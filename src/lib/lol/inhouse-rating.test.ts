@@ -7,10 +7,37 @@ describe("inhouse Elo", () => {
     const result = makeStoredResult();
     const snapshot = calculateInhouseRatings([result], 123);
     expect(snapshot.sourceMatchCount).toBe(1);
+    expect(snapshot.schemaVersion).toBe(2);
     expect(snapshot.ratings).toHaveLength(10);
-    expect(snapshot.ratings.find((rating) => rating.discordUserId === "player-1")).toMatchObject({elo: 1516, matchCount: 1});
-    expect(snapshot.ratings.find((rating) => rating.discordUserId === "player-6")).toMatchObject({elo: 1484, matchCount: 1});
+    expect(snapshot.ratings.find((rating) => rating.discordUserId === "player-1")).toMatchObject({
+      elo: 1516,
+      matchCount: 1,
+      roleRatings: {TOP: {elo: 1516, matchCount: 1}},
+    });
+    expect(snapshot.ratings.find((rating) => rating.discordUserId === "player-6")).toMatchObject({
+      elo: 1484,
+      matchCount: 1,
+      roleRatings: {TOP: {elo: 1484, matchCount: 1}},
+    });
     expect(calculateInhouseRatings([result], 123)).toEqual(snapshot);
+  });
+
+  it("tracks the played role separately from overall Elo", () => {
+    const first = makeStoredResult();
+    const second = makeStoredResult();
+    second.matchResultId = "result-2";
+    second.ingestionId = "match-ingestion-0002";
+    const top = second.participants[0];
+    const jungle = second.participants[1];
+    second.participants[0] = {...top, role: "JUNGLE"};
+    second.participants[1] = {...jungle, role: "TOP"};
+
+    const rating = calculateInhouseRatings([first, second]).ratings
+      .find((entry) => entry.discordUserId === "player-1");
+
+    expect(rating?.matchCount).toBe(2);
+    expect(rating?.roleRatings?.TOP?.matchCount).toBe(1);
+    expect(rating?.roleRatings?.JUNGLE?.matchCount).toBe(1);
   });
 
   it("keeps guest or partially mapped results as record-only", () => {

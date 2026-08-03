@@ -291,6 +291,7 @@ export async function completePlayerWebSync(
   const synced: PlayerProfile = {
     ...document.value,
     ...data,
+    schemaVersion: 2,
     syncStatus: "READY",
     lastSyncedAt: now,
     syncErrorCode: null,
