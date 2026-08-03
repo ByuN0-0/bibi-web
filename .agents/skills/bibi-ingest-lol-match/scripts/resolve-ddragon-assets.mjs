@@ -236,7 +236,8 @@ async function compareCrop(buffer, crop, candidates, kind, field) {
   const clearChampionHash = kind === "champion" && precisionPool[0]?.hashDistance <= 20
     && precisionPool[0].pixelError <= 650 && scoreGap(precisionPool) >= 35;
   const clearPerk = kind === "perk" && precisionPool[0]?.pixelError <= 750 && scoreGap(precisionPool) >= 60;
-  const clearItem = kind === "item" && precisionPool[0]?.matchScore <= 160 && scoreGap(precisionPool) >= 60;
+  const clearItem = (kind === "item" || kind === "trinket")
+    && precisionPool[0]?.matchScore <= 160 && scoreGap(precisionPool) >= 60;
   const selected = precisionPool[0];
   const accepted = isAcceptedAssetMatch({kind, methodAgreed, overlayAgreed, overlayDecisive, uniqueMatch, clearChampionHash, clearPerk, clearItem});
   if (selected) {
@@ -279,24 +280,19 @@ async function compareBanOverlayAtOffsets(sharp, normalizedScreen, crop, candida
 export function isDecisiveBanOverlay(pool) {
   return Boolean(pool?.[0]
     && pool[0].pixelError <= 250
-    && scoreGap(pool) >= 12);
+    && scoreGap(pool) >= 10);
 }
 
-export function isAcceptedAssetMatch({kind, methodAgreed, overlayDecisive = false, uniqueMatch = false, clearChampionHash = false, clearPerk = false, clearItem = false}) {
+export function isAcceptedAssetMatch({kind, overlayDecisive = false, uniqueMatch = false, clearChampionHash = false, clearPerk = false, clearItem = false}) {
   if (kind === "ban") return overlayDecisive;
-  if (kind === "champion") return uniqueMatch || clearChampionHash;
-  if (kind === "item") return methodAgreed ? uniqueMatch : clearItem;
-  if (!methodAgreed) return false;
-  return uniqueMatch || clearChampionHash || clearPerk;
+  if (uniqueMatch) return true;
+  if (kind === "champion") return clearChampionHash;
+  if (kind === "item" || kind === "trinket") return clearItem;
+  return clearPerk;
 }
 
 async function normalizedBanOverlayTarget(sharp, normalizedScreen, crop, offset) {
-  const artwork = {
-    left: crop.left + 9 + offset.dx,
-    top: crop.top + (crop.top < 350 ? -4 : -3) + offset.dy,
-    width: 26,
-    height: 26,
-  };
+  const artwork = banArtworkCoordinates(crop, offset);
   return sharp(normalizedScreen)
     .extract(artwork)
     .resize(32, 32)
@@ -326,18 +322,36 @@ async function compareBanOverlayCandidates(candidates, target, model) {
 }
 
 async function normalizedCropTargets(sharp, normalizedScreen, crop, kind) {
-  const searchable = ["ban", "spell", "perk", "item"].includes(kind);
-  const offsets = searchable ? [-1, 0, 1].flatMap((dy) => [-1, 0, 1].map((dx) => ({dx, dy}))) : [{dx: 0, dy: 0}];
+  const offsets = assetCropOffsets(kind);
   return Promise.all(offsets.map(async ({dx, dy}) => ({
     dx,
     dy,
     normalized: await sharp(normalizedScreen)
-      .extract({...crop, left: crop.left + dx, top: crop.top + dy})
+      .extract(kind === "ban"
+        ? banArtworkCoordinates(crop, {dx, dy})
+        : {...crop, left: crop.left + dx, top: crop.top + dy})
       .resize(32, 32)
       .removeAlpha()
       .raw()
       .toBuffer(),
   })));
+}
+
+export function assetCropOffsets(kind) {
+  const radius = kind === "champion" ? 2
+    : ["ban", "spell", "perk", "item", "trinket", "quest"].includes(kind) ? 1
+    : 0;
+  const values = Array.from({length: radius * 2 + 1}, (_, index) => index - radius);
+  return values.flatMap((dy) => values.map((dx) => ({dx, dy})));
+}
+
+export function banArtworkCoordinates(crop, offset = {dx: 0, dy: 0}) {
+  return {
+    left: crop.left + 10 + offset.dx,
+    top: crop.top + (crop.top < 350 ? -7 : -6) + offset.dy,
+    width: 26,
+    height: 26,
+  };
 }
 
 function cropQuality(pool, target) {
@@ -363,8 +377,7 @@ async function getBanOverlayModel(sharp, normalizedScreen) {
 }
 
 function banOverlayExtractionCoordinates() {
-  const rows = [[194 + banOffsetY, [854, 919, 984]], [229 + banOffsetY, [854, 919]], [410 + banOffsetY, [854, 919, 984]], [445 + banOffsetY, [854, 919]]];
-  return rows.flatMap(([top, lefts]) => lefts.map((left) => ({left, top, width: 26, height: 26})));
+  return ["BLUE", "RED"].flatMap((team) => banCoordinates(team).map((crop) => banArtworkCoordinates(crop)));
 }
 
 export function extractBanOverlayModel(crops) {
@@ -639,12 +652,12 @@ function banCoordinates(team) { const top = (team === "BLUE" ? 198 : 413) + banO
 export function participantAssetCoordinates(row) {
   return {
     champion: {left: 97, top: row - 16, width: 32, height: 32},
-    perk: {left: 23, top: row - 10, width: 20, height: 20},
+    perk: {left: 24, top: row - 10, width: 20, height: 20},
     // Each spell's 11px artwork sits inside a shared gold frame. The second
     // icon starts at row+1; row+3 included its lower frame and page background.
     spells: [
-      {left: 49, top: row - 12, width: 11, height: 11},
-      {left: 49, top: row + 1, width: 11, height: 11},
+      {left: 50, top: row - 12, width: 11, height: 11},
+      {left: 50, top: row + 1, width: 11, height: 11},
     ],
   };
 }

@@ -16,7 +16,7 @@ import {
   selectUniqueAssetAssignments,
   validateMechanicalTotals,
 } from "./scoreboard-machine-core.mjs";
-import {applyBanOverlayModel, assetDifferenceHash, banCropLooksUnselected, extractBanOverlayModel, isAcceptedAssetMatch, isDecisiveBanOverlay, isObtainableInventoryItem, isScoreboardKeystone, participantAssetCoordinates, participantInventoryCoordinates} from "./resolve-ddragon-assets.mjs";
+import {applyBanOverlayModel, assetCropOffsets, assetDifferenceHash, banArtworkCoordinates, banCropLooksUnselected, extractBanOverlayModel, isAcceptedAssetMatch, isDecisiveBanOverlay, isObtainableInventoryItem, isScoreboardKeystone, participantAssetCoordinates, participantInventoryCoordinates} from "./resolve-ddragon-assets.mjs";
 
 describe("scoreboard machine parsing", () => {
   it("normalizes common OCR substitutions", () => {
@@ -37,13 +37,16 @@ describe("scoreboard machine parsing", () => {
   });
 
   it("uses asset-specific confidence rules", () => {
-    expect(isAcceptedAssetMatch({kind: "perk", methodAgreed: false, uniqueMatch: true, clearPerk: true})).toBe(false);
+    expect(isAcceptedAssetMatch({kind: "perk", methodAgreed: false, uniqueMatch: true, clearPerk: true})).toBe(true);
     expect(isAcceptedAssetMatch({kind: "perk", methodAgreed: true, uniqueMatch: true})).toBe(true);
     expect(isAcceptedAssetMatch({kind: "champion", methodAgreed: false, uniqueMatch: true})).toBe(true);
     expect(isAcceptedAssetMatch({kind: "ban", methodAgreed: false, overlayAgreed: false, overlayDecisive: true})).toBe(true);
     expect(isAcceptedAssetMatch({kind: "ban", methodAgreed: true, overlayAgreed: true, overlayDecisive: false})).toBe(false);
-    expect(isAcceptedAssetMatch({kind: "item", methodAgreed: false, uniqueMatch: true, clearItem: false})).toBe(false);
+    expect(isAcceptedAssetMatch({kind: "item", methodAgreed: false, uniqueMatch: true, clearItem: false})).toBe(true);
     expect(isAcceptedAssetMatch({kind: "item", methodAgreed: false, uniqueMatch: true, clearItem: true})).toBe(true);
+    expect(isAcceptedAssetMatch({kind: "trinket", methodAgreed: false, uniqueMatch: true, clearItem: false})).toBe(true);
+    expect(isAcceptedAssetMatch({kind: "trinket", methodAgreed: false, uniqueMatch: true, clearItem: true})).toBe(true);
+    expect(isAcceptedAssetMatch({kind: "spell", methodAgreed: true, uniqueMatch: false})).toBe(false);
   });
 
   it("uses the same circular portrait area for champion hash matching", () => {
@@ -163,6 +166,11 @@ describe("summoner spell and quest constraints", () => {
 });
 
 describe("ban assignment constraints", () => {
+  it("uses one artwork rectangle for clean and overlay ban matching", () => {
+    expect(banArtworkCoordinates({left: 845, top: 198})).toEqual({left: 855, top: 191, width: 26, height: 26});
+    expect(banArtworkCoordinates({left: 910, top: 448})).toEqual({left: 920, top: 442, width: 26, height: 26});
+  });
+
   it("extracts repeated diagonal pixels from all ban slots and composites them onto candidates", () => {
     const crops = Array.from({length: 10}, (_, cropIndex) => {
       const crop = Buffer.alloc(32 * 32 * 3);
@@ -205,6 +213,10 @@ describe("ban assignment constraints", () => {
     expect(isDecisiveBanOverlay([
       {pixelError: 200, matchScore: 200},
       {pixelError: 210, matchScore: 210},
+    ])).toBe(true);
+    expect(isDecisiveBanOverlay([
+      {pixelError: 200, matchScore: 200},
+      {pixelError: 209, matchScore: 209},
     ])).toBe(false);
     expect(isDecisiveBanOverlay([
       {pixelError: 251, matchScore: 251},
@@ -254,12 +266,21 @@ describe("scoreboard anchor detection", () => {
   it("crops the portrait center and both spell interiors without their gold frame", () => {
     expect(participantAssetCoordinates(202)).toEqual({
       champion: {left: 97, top: 186, width: 32, height: 32},
-      perk: {left: 23, top: 192, width: 20, height: 20},
+      perk: {left: 24, top: 192, width: 20, height: 20},
       spells: [
-        {left: 49, top: 190, width: 11, height: 11},
-        {left: 49, top: 203, width: 11, height: 11},
+        {left: 50, top: 190, width: 11, height: 11},
+        {left: 50, top: 203, width: 11, height: 11},
       ],
     });
+  });
+
+  it("searches wider for champions and item-sized auxiliary slots", () => {
+    expect(assetCropOffsets("champion")).toHaveLength(25);
+    expect(assetCropOffsets("champion")).toContainEqual({dx: -2, dy: 2});
+    for (const kind of ["item", "trinket", "quest"]) {
+      expect(assetCropOffsets(kind)).toHaveLength(9);
+      expect(assetCropOffsets(kind)).toContainEqual({dx: -1, dy: 1});
+    }
   });
 
   it("uses the fixed item grid for both empty-slot checks and asset matching", () => {

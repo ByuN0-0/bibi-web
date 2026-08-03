@@ -83,13 +83,15 @@ For each player row center `y`:
 
 | Slot | x | y offset | size |
 | --- | ---: | ---: | ---: |
-| Primary perk | 23 | -10 | 20×20 |
-| Summoner spell 1 | 49 | -12 | 11×11 |
-| Summoner spell 2 | 49 | 1 | 11×11 |
+| Primary perk | 24 | -10 | 20×20 |
+| Summoner spell 1 | 50 | -12 | 11×11 |
+| Summoner spell 2 | 50 | 1 | 11×11 |
 | Champion portrait | 97 | -16 | 32×32 |
 | Items 1–6 | 293, 318, 343, 368, 393, 418 | -12 | 22×22 |
 | Trinket | 443 | -12 | 22×22 |
 | Quest slot | 476 | -12 | 22×22 |
+
+Champion portraits search ±2 pixels around the fixed coordinate. Perks, summoner spells, inventory items, trinkets, and quest slots search ±1 pixel and select the best precision match with a movement penalty.
 
 Ban crops are 24×24 at BLUE `(845,198) (910,198) (975,198) (845,233) (910,233)` and RED `(845,413) (910,413) (975,413) (845,448) (910,448)`. Mask diagonal ban slashes and outer borders before comparison.
 
