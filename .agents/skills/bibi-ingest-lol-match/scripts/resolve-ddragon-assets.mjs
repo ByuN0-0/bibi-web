@@ -236,8 +236,9 @@ async function compareCrop(buffer, crop, candidates, kind, field) {
   const clearChampionHash = kind === "champion" && precisionPool[0]?.hashDistance <= 20
     && precisionPool[0].pixelError <= 650 && scoreGap(precisionPool) >= 35;
   const clearPerk = kind === "perk" && precisionPool[0]?.pixelError <= 750 && scoreGap(precisionPool) >= 60;
+  const clearItem = kind === "item" && precisionPool[0]?.matchScore <= 160 && scoreGap(precisionPool) >= 60;
   const selected = precisionPool[0];
-  const accepted = isAcceptedAssetMatch({kind, methodAgreed, overlayAgreed, overlayDecisive, uniqueMatch, clearChampionHash, clearPerk});
+  const accepted = isAcceptedAssetMatch({kind, methodAgreed, overlayAgreed, overlayDecisive, uniqueMatch, clearChampionHash, clearPerk, clearItem});
   if (selected) {
     const overlaySelected = chosen.overlayPool?.[0];
     const selectedOffset = kind === "ban" ? chosen.overlayOffset : chosen.target;
@@ -281,9 +282,11 @@ export function isDecisiveBanOverlay(pool) {
     && scoreGap(pool) >= 12);
 }
 
-export function isAcceptedAssetMatch({kind, methodAgreed, overlayAgreed = true, overlayDecisive = false, uniqueMatch = false, clearChampionHash = false, clearPerk = false}) {
+export function isAcceptedAssetMatch({kind, methodAgreed, overlayDecisive = false, uniqueMatch = false, clearChampionHash = false, clearPerk = false, clearItem = false}) {
+  if (kind === "ban") return overlayDecisive;
+  if (kind === "champion") return uniqueMatch || clearChampionHash;
+  if (kind === "item") return methodAgreed ? uniqueMatch : clearItem;
   if (!methodAgreed) return false;
-  if (kind === "ban") return overlayAgreed && overlayDecisive;
   return uniqueMatch || clearChampionHash || clearPerk;
 }
 

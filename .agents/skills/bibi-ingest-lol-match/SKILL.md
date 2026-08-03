@@ -27,7 +27,7 @@ Mechanically extract one standard Korean LoL post-game scoreboard and stage it f
 - Determine the winner from the selected player's team and the visible victory/defeat label; fail when they conflict.
 - Require two teams, ten participants, all team totals, six objective counters, five ban slots, and one TOP/JUNGLE/MIDDLE/BOTTOM/UTILITY quest per team.
 - Accept participant levels only from 1 through 18. Retry multiple crops mechanically. If none is valid, stage level `1` with a `LEVEL_UNRESOLVED` review issue containing the raw OCR text.
-- Use deterministic Data Dragon matching only. Low-margin, comparison-method disagreement, ban overlay disagreement, and constraint-overridden selections remain canonical top candidates but create review issues.
+- Use deterministic Data Dragon matching only. Apply confidence rules by asset type: decisive pixel matching may accept champions, decisive overlay matching may accept bans, perks retain method-agreement review, and method-disagreeing items require a strict absolute score and candidate gap. Low-margin and constraint-overridden selections remain review issues; ignored method disagreement stays in diagnostics only.
 - A complete lack of a canonical candidate, invalid totals, invalid roles, or failed server validation stops staging.
 
 ## Manual commands

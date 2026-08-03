@@ -369,9 +369,13 @@ async function runCli() {
 async function numberField(field, centerX, centerY, width, {blankIsZero = false, narrowRetry = false, allowMissing = false, highContrast = false} = {}) {
   let result = await textField(field, {left: Math.round(centerX - width / 2), top: centerY - 13, width, height: 26}, highContrast ? "number-high" : "number");
   let value = parseInteger(result.text);
-  if (value === null && narrowRetry) {
-    result = await textField(`${field}.narrow`, {left: Math.round(centerX - 12), top: centerY - 13, width: 18, height: 26}, "number");
-    value = parseInteger(result.text);
+  if (narrowRetry) {
+    const narrowResult = await textField(`${field}.narrow`, {left: Math.round(centerX - 9), top: centerY - 13, width: 18, height: 26}, "number");
+    const narrowValue = parseInteger(narrowResult.text);
+    if (narrowValue !== null && (value === null || narrowResult.confidence > result.confidence)) {
+      result = narrowResult;
+      value = narrowValue;
+    }
   }
   if (value === null && blankIsZero && result.text.trim() === "") return 0;
   if (value === null && allowMissing) return null;

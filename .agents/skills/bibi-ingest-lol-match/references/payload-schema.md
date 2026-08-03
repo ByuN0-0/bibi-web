@@ -60,7 +60,7 @@ Before recognition, call authenticated `GET /api/internal/lol-match-results` or 
 }
 ```
 
-The payload may include up to 80 mechanically generated `reviewIssues`. Each issue uses a stable team/role target rather than an array index. New issues are always stored as `OPEN`; client-supplied resolved states are ignored. Level recognition failure uses level `1`, reason `LEVEL_UNRESOLVED`, and the original OCR text. Asset issues use `LOW_MARGIN`, `METHOD_DISAGREEMENT`, or `CONSTRAINT_OVERRIDE` plus the selected canonical asset ID and compact score diagnostics.
+The payload may include up to 80 mechanically generated `reviewIssues`. Each issue uses a stable team/role target rather than an array index. New issues are always stored as `OPEN`; client-supplied resolved states are ignored. Level recognition failure uses level `1`, reason `LEVEL_UNRESOLVED`, and the original OCR text. Asset issues use `LOW_MARGIN`, `METHOD_DISAGREEMENT`, or `CONSTRAINT_OVERRIDE` plus the selected canonical asset ID and compact score diagnostics. Confidence is asset-specific: decisive champion pixels and ban overlays may override coarse-method disagreement, while perks retain method-agreement review and items require stricter score and gap thresholds.
 
 Every staged result is stored as `PENDING_REVIEW`. It is excluded from public history and Elo until an authenticated administrator resolves every issue and publishes it from `/lol-statics/history/{matchResultId}/edit`. The screenshot is never included in this payload.
 

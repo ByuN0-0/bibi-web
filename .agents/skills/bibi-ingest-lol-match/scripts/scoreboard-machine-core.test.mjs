@@ -36,11 +36,14 @@ describe("scoreboard machine parsing", () => {
     });
   });
 
-  it("requires comparison-method agreement for assets and overlay agreement for bans", () => {
+  it("uses asset-specific confidence rules", () => {
     expect(isAcceptedAssetMatch({kind: "perk", methodAgreed: false, uniqueMatch: true, clearPerk: true})).toBe(false);
     expect(isAcceptedAssetMatch({kind: "perk", methodAgreed: true, uniqueMatch: true})).toBe(true);
-    expect(isAcceptedAssetMatch({kind: "ban", methodAgreed: true, overlayAgreed: false, overlayDecisive: true})).toBe(false);
-    expect(isAcceptedAssetMatch({kind: "ban", methodAgreed: true, overlayAgreed: true, overlayDecisive: true})).toBe(true);
+    expect(isAcceptedAssetMatch({kind: "champion", methodAgreed: false, uniqueMatch: true})).toBe(true);
+    expect(isAcceptedAssetMatch({kind: "ban", methodAgreed: false, overlayAgreed: false, overlayDecisive: true})).toBe(true);
+    expect(isAcceptedAssetMatch({kind: "ban", methodAgreed: true, overlayAgreed: true, overlayDecisive: false})).toBe(false);
+    expect(isAcceptedAssetMatch({kind: "item", methodAgreed: false, uniqueMatch: true, clearItem: false})).toBe(false);
+    expect(isAcceptedAssetMatch({kind: "item", methodAgreed: false, uniqueMatch: true, clearItem: true})).toBe(true);
   });
 
   it("matches Korean, English and OCR-confusable alt account names", () => {
