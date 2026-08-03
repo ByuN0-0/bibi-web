@@ -1,4 +1,4 @@
-import {ROLES, ROLE_LABEL, type Role, type TeamAssignment, type TeamComposition} from "@/lib/lol/types";
+import {ROLES, type Role, type TeamAssignment, type TeamComposition} from "@/lib/lol/types";
 
 export const RANK_TIERS = [
   "IRON", "BRONZE", "SILVER", "GOLD", "PLATINUM", "EMERALD", "DIAMOND", "MASTER", "GRANDMASTER", "CHALLENGER",
@@ -17,10 +17,11 @@ export function rankTierIconPath(rank: string): string {
 }
 
 export function formatTeamCompositionText(composition: Pick<TeamComposition, "blue" | "red">): string {
-  return [formatTeam("블루 팀", composition.blue), formatTeam("레드 팀", composition.red)].join("\n\n");
+  return ["탑/정/미/원/서", formatTeam("B", composition.blue), formatTeam("R", composition.red)].join("\n");
 }
 
 function formatTeam(title: string, assignments: TeamAssignment[]) {
   const byRole = new Map<Role, TeamAssignment>(assignments.map((assignment) => [assignment.role, assignment]));
-  return [`[${title}]`, ...ROLES.map((role) => `${ROLE_LABEL[role]}: ${byRole.get(role)?.displayName ?? "-"}`)].join("\n");
+  const players = ROLES.map((role) => byRole.get(role)?.displayName ?? "-").join("/");
+  return `${title} ${players}`;
 }
