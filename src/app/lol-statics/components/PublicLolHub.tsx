@@ -4,16 +4,19 @@ import {useEffect, useRef, useState} from "react";
 import {useRouter} from "next/navigation";
 import TeamBuilder from "@/app/lol-statics/components/TeamBuilder";
 import PublicMatchHistory from "@/app/lol-statics/components/PublicMatchHistory";
+import PublicPlayerStats from "@/app/lol-statics/components/PublicPlayerStats";
 import type {MatchHistoryAccount} from "@/lib/lol/match-history-view";
 import type {PlayerParticipationMap} from "@/lib/lol/player-participation";
+import type {PlayerInhouseStatsMap} from "@/lib/lol/player-stats";
 import type {PlayerProfile, PublicMatchResult} from "@/lib/lol/types";
 
-type HubTab = "team" | "history";
+type HubTab = "team" | "history" | "stats";
 
-export default function PublicLolHub({players, accounts, playerParticipation, playerLoadFailed, initialTab}: {
+export default function PublicLolHub({players, accounts, playerParticipation, playerStats, playerLoadFailed, initialTab}: {
   players: PlayerProfile[];
   accounts: MatchHistoryAccount[];
   playerParticipation: PlayerParticipationMap;
+  playerStats: PlayerInhouseStatsMap;
   playerLoadFailed: boolean;
   initialTab: HubTab;
 }) {
@@ -55,7 +58,7 @@ export default function PublicLolHub({players, accounts, playerParticipation, pl
 
   function selectTab(next: HubTab) {
     setTab(next);
-    router.replace(next === "history" ? "/?tab=history" : "/", {scroll: false});
+    router.replace(next === "team" ? "/" : `/?tab=${next}`, {scroll: false});
     if (next === "history" && !historyLoaded && !historyLoading) void loadHistory(0);
   }
 
@@ -64,6 +67,7 @@ export default function PublicLolHub({players, accounts, playerParticipation, pl
       <div className="mb-4 inline-flex rounded-lg border border-[var(--hairline)] bg-white p-1" role="tablist" aria-label="롤 내전 메뉴">
         <TabButton active={tab === "team"} onClick={() => selectTab("team")}>팀 편성</TabButton>
         <TabButton active={tab === "history"} onClick={() => selectTab("history")}>내전 기록</TabButton>
+        <TabButton active={tab === "stats"} onClick={() => selectTab("stats")}>개인 스탯</TabButton>
       </div>
       <div role="tabpanel" aria-label="팀 편성" hidden={tab !== "team"}>
         {playerLoadFailed ? (
@@ -83,6 +87,14 @@ export default function PublicLolHub({players, accounts, playerParticipation, pl
           hasMore={historyLoaded && nextOffset !== null}
           onLoadMore={() => void loadHistory(historyLoaded ? nextOffset ?? 0 : 0)}
         />
+      </div>
+      <div role="tabpanel" aria-label="개인 스탯" hidden={tab !== "stats"}>
+        {playerLoadFailed ? (
+          <div className="surface-card border-[#f2d28b] bg-[var(--warning-soft)] px-5 py-12 text-center">
+            <p className="font-semibold text-[var(--warning)]">선수 통계를 불러오지 못했습니다.</p>
+            <p className="mt-2 text-sm text-[var(--muted)]">잠시 후 페이지를 새로고침해 주세요.</p>
+          </div>
+        ) : <PublicPlayerStats players={players} accounts={accounts} stats={playerStats} />}
       </div>
     </>
   );

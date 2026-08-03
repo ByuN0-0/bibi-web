@@ -6,11 +6,12 @@ import {
   summarizePlayerParticipation,
 } from "@/lib/lol/player-participation";
 import type {MatchHistoryAccount} from "@/lib/lol/match-history-view";
+import {summarizePlayerStats, type PlayerInhouseStatsMap} from "@/lib/lol/player-stats";
 import {listMatchResults, listPlayerAccounts, listPlayers} from "@/lib/lol/repository";
 
 export const metadata: Metadata = {
-  title: "롤 내전 팀 편성 | 비비",
-  description: "등록 선수의 내전 참가 기록과 최근 전적을 반영해 LoL 내전 팀을 편성하고 지난 경기 기록을 확인합니다.",
+  title: "롤 내전 팀 편성·개인 스탯 | 비비",
+  description: "등록 선수의 최근 전적을 반영해 LoL 내전 팀을 편성하고 경기 기록, 개인 스탯과 상대전적을 확인합니다.",
 };
 
 export const dynamic = "force-dynamic";
@@ -19,10 +20,12 @@ export default async function Home({searchParams}: {searchParams: Promise<{tab?:
   let players = [] as Awaited<ReturnType<typeof listPlayers>>;
   let accounts: MatchHistoryAccount[] = [];
   let participation = {} as ReturnType<typeof summarizePlayerParticipation>;
+  let playerStats: PlayerInhouseStatsMap = {};
   let loadFailed = false;
   try {
     const [loadedPlayers, loadedAccounts, results] = await Promise.all([listPlayers(), listPlayerAccounts(), listMatchResults()]);
     participation = summarizePlayerParticipation(results);
+    playerStats = summarizePlayerStats(results, loadedPlayers);
     players = sortPlayersByParticipation(loadedPlayers, participation);
     accounts = loadedAccounts.map(({discordUserId, riotGameName, riotTagLine, soloRank, flexRank}) => ({discordUserId, riotGameName, riotTagLine, soloRank, flexRank}));
   } catch (error) {
@@ -49,8 +52,9 @@ export default async function Home({searchParams}: {searchParams: Promise<{tab?:
           players={players}
           accounts={accounts}
           playerParticipation={participation}
+          playerStats={playerStats}
           playerLoadFailed={loadFailed}
-          initialTab={tab === "history" ? "history" : "team"}
+          initialTab={tab === "history" ? "history" : tab === "stats" ? "stats" : "team"}
         />
       </div>
     </main>
