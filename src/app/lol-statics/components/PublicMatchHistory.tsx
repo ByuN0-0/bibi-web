@@ -21,15 +21,15 @@ export default function PublicMatchHistory({results, loading, error, hasMore, on
         <p className="text-sm text-[var(--muted)]">경기를 누르면 전체 점수판을 볼 수 있어요.</p>
       </div>
       {error && <div role="alert" className="mt-5 rounded-xl border border-[#f2b8aa] bg-[var(--error-soft)] px-4 py-4 text-sm text-[var(--error)]"><p>{error}</p><button type="button" onClick={onLoadMore} className="mt-3 font-bold underline">다시 시도</button></div>}
-      <div className="mt-6 space-y-8">
+      <div className="mt-5 space-y-6">
         {dateGroups.map((group) => (
           <section key={group.playedOn} aria-labelledby={`history-date-${group.playedOn}`}>
-            <div className="mb-3 flex items-center gap-3">
+            <div className="mb-2 flex items-center gap-2.5">
               <h3 id={`history-date-${group.playedOn}`} className="text-base font-bold tracking-[-0.02em]">{formatDate(group.playedOn)}</h3>
               <span className="rounded-full bg-[var(--surface-strong)] px-2.5 py-1 text-[11px] font-semibold text-[var(--muted)]">{group.results.length}경기</span>
               <span className="h-px flex-1 bg-[var(--hairline-soft)]" aria-hidden="true" />
             </div>
-            <div className="space-y-2">
+            <div className="space-y-1.5">
               {group.results.map((result) => <MatchHistoryCard key={result.matchResultId} result={result} />)}
             </div>
           </section>
@@ -49,8 +49,8 @@ function MatchHistoryCard({result}: {result: PublicMatchResult}) {
 
   return (
     <details className={`group overflow-hidden rounded-xl border border-[var(--hairline-soft)] border-l-4 bg-white ${blueWinner ? "border-l-[#4f83e3]" : "border-l-[#e94f6d]"}`}>
-      <summary className="relative cursor-pointer list-none px-4 py-4 transition-colors hover:bg-[var(--surface-soft)] [&::-webkit-details-marker]:hidden">
-        <div className="grid gap-4 md:grid-cols-[140px_minmax(0,1fr)] xl:grid-cols-[125px_minmax(280px,0.8fr)_minmax(360px,1fr)] xl:items-center">
+      <summary className="relative cursor-pointer list-none px-3.5 py-2.5 transition-colors hover:bg-[var(--surface-soft)] [&::-webkit-details-marker]:hidden">
+        <div className="grid gap-3 md:grid-cols-[110px_minmax(0,1fr)] lg:grid-cols-[100px_400px_minmax(0,1fr)] lg:items-center">
           <MatchInfo winner={result.winner} durationSeconds={result.durationSeconds} />
           <TeamTotals blue={blueStats} red={redStats} />
           <RosterSummary result={result} />
@@ -71,22 +71,22 @@ function MatchInfo({winner, durationSeconds}: {winner: MatchTeam; durationSecond
   const blue = winner === "BLUE";
   return (
     <div className="pr-20 md:pr-0">
-      <p className="text-[11px] font-semibold uppercase tracking-[0.12em] text-[var(--muted)]">내전</p>
-      <p className={`mt-1 text-base font-extrabold ${blue ? "text-[#3269bd]" : "text-[#c43652]"}`}>{blue ? "블루 승리" : "레드 승리"}</p>
-      <p className="mt-1 text-xs font-medium text-[var(--muted)]">{formatDuration(durationSeconds)}</p>
+      <p className="text-[10px] font-semibold uppercase tracking-[0.12em] text-[var(--muted)]">내전</p>
+      <p className={`mt-0.5 text-sm font-extrabold ${blue ? "text-[#3269bd]" : "text-[#c43652]"}`}>{blue ? "블루 승리" : "레드 승리"}</p>
+      <p className="mt-0.5 text-[11px] font-medium text-[var(--muted)]">{formatDuration(durationSeconds)}</p>
     </div>
   );
 }
 
 function TeamTotals({blue, red}: {blue: MatchResultTeamStats; red: MatchResultTeamStats}) {
   return (
-    <div className="rounded-lg bg-[var(--surface-soft)] px-3 py-3">
-      <div className="grid grid-cols-[1fr_auto_1fr] items-end gap-3 text-center">
-        <div><p className="text-[10px] font-bold uppercase tracking-wide text-[#3269bd]">Blue</p><p className="mt-0.5 text-2xl font-black tabular-nums">{blue.kills}</p></div>
-        <p className="pb-1 text-xs font-bold text-[var(--muted-soft)]">VS</p>
-        <div><p className="text-[10px] font-bold uppercase tracking-wide text-[#c43652]">Red</p><p className="mt-0.5 text-2xl font-black tabular-nums">{red.kills}</p></div>
+    <div className="rounded-lg bg-[var(--surface-soft)] px-3 py-2">
+      <div className="grid grid-cols-[1fr_auto_1fr] items-end gap-2 text-center">
+        <div><p className="text-[10px] font-bold uppercase leading-none tracking-wide text-[#3269bd]">Blue</p><p className="mt-0.5 text-[30px] font-black leading-none tabular-nums">{blue.kills}</p></div>
+        <p className="pb-0.5 text-[10px] font-bold text-[var(--muted-soft)]">VS</p>
+        <div><p className="text-[10px] font-bold uppercase leading-none tracking-wide text-[#c43652]">Red</p><p className="mt-0.5 text-[30px] font-black leading-none tabular-nums">{red.kills}</p></div>
       </div>
-      <div className="mt-2 grid grid-cols-3 divide-x divide-[var(--hairline)] border-t border-[var(--hairline)] pt-2 text-center text-[10px] text-[var(--muted)]">
+      <div className="mt-1.5 grid grid-cols-3 divide-x divide-[var(--hairline)] border-t border-[var(--hairline)] pt-1.5 text-center text-[11px] text-[var(--muted)]">
         <Metric label="골드" blue={formatGold(blue.goldTotal)} red={formatGold(red.goldTotal)} />
         <Metric label="포탑" blue={blue.objectives.turretsDestroyed} red={red.objectives.turretsDestroyed} />
         <Metric label="드래곤" blue={blue.objectives.dragonKills} red={red.objectives.dragonKills} />
@@ -96,12 +96,12 @@ function TeamTotals({blue, red}: {blue: MatchResultTeamStats; red: MatchResultTe
 }
 
 function Metric({label, blue, red}: {label: string; blue: string | number; red: string | number}) {
-  return <p><span className="font-bold text-[#3269bd]">{blue}</span><span className="mx-1 text-[9px]">{label}</span><span className="font-bold text-[#c43652]">{red}</span></p>;
+  return <p className="leading-none"><span className="text-xs font-extrabold text-[#3269bd]">{blue}</span><span className="mx-1 text-[9px]">{label}</span><span className="text-xs font-extrabold text-[#c43652]">{red}</span></p>;
 }
 
 function RosterSummary({result}: {result: PublicMatchResult}) {
   return (
-    <div className="grid grid-cols-2 gap-3 md:col-span-2 xl:col-span-1">
+    <div className="grid grid-cols-2 gap-3 md:col-span-2 md:grid-cols-[repeat(2,minmax(0,180px))] md:justify-center lg:col-span-1">
       <RosterColumn result={result} team="BLUE" />
       <RosterColumn result={result} team="RED" />
     </div>
@@ -113,12 +113,12 @@ function RosterColumn({result, team}: {result: PublicMatchResult; team: MatchTea
   const blue = team === "BLUE";
   return (
     <div className="min-w-0">
-      <p className={`mb-1.5 text-[10px] font-bold uppercase tracking-wide ${blue ? "text-[#3269bd]" : "text-[#c43652]"}`}>{blue ? "Blue team" : "Red team"}</p>
-      <div className="space-y-1">
+      <p className={`mb-0.5 text-[9px] font-bold uppercase leading-none tracking-wide ${blue ? "text-[#3269bd]" : "text-[#c43652]"}`}>{blue ? "Blue team" : "Red team"}</p>
+      <div className="space-y-0.5">
         {participants.map((participant) => (
-          <div key={`${participant.role}-${participant.observedName}`} className="flex min-w-0 items-center gap-2">
-            <LolIcon asset={participant.champion} version={result.ddragonVersion} size={22} className="shrink-0 rounded" />
-            <span className="min-w-0 truncate text-[11px] font-medium" title={participant.observedName}>{participant.observedName}</span>
+          <div key={`${participant.role}-${participant.observedName}`} className="flex min-w-0 items-center gap-1.5">
+            <LolIcon asset={participant.champion} version={result.ddragonVersion} size={18} className="shrink-0 rounded" />
+            <span className="min-w-0 truncate text-[11px] font-medium leading-none" title={participant.observedName}>{participant.observedName}</span>
           </div>
         ))}
       </div>
