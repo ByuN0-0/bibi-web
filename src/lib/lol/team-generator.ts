@@ -1,5 +1,5 @@
 import "server-only";
-import {latestSystemStatus, listPlayers, listRecentSessions} from "@/lib/lol/repository";
+import {listPlayers, listRecentSessions} from "@/lib/lol/repository";
 import {getOrRebuildInhouseRatingSnapshot} from "@/lib/lol/inhouse-rating-service";
 import {balanceTeam} from "@/lib/lol/team-balancer";
 import {ALGORITHM_VERSION} from "@/lib/lol/types";
@@ -17,18 +17,11 @@ export async function generateTeamComposition(
   if (selectedDiscordUserIds.length !== 10 || new Set(selectedDiscordUserIds).size !== 10) {
     throw new TeamGenerationError("선수를 정확히 10명 선택해 주세요.", 400);
   }
-  const [status, allPlayers, recentSessions, ratingSnapshot] = await Promise.all([
-    latestSystemStatus(),
+  const [allPlayers, recentSessions, ratingSnapshot] = await Promise.all([
     listPlayers(),
-    listRecentSessions(10),
+    listRecentSessions(10, ALGORITHM_VERSION),
     getOrRebuildInhouseRatingSnapshot(),
   ]);
-  if (!status || status.algorithmVersion !== ALGORITHM_VERSION) {
-    throw new TeamGenerationError(
-      "Java 봇과 웹의 팀 편성 알고리즘 버전이 일치하지 않습니다.",
-      409,
-    );
-  }
   const byId = new Map(allPlayers.map((player) => [player.discordUserId, player]));
   const players = selectedDiscordUserIds.map((id) => byId.get(id));
   if (players.some((player) => !player)) {

@@ -347,10 +347,15 @@ function hasPlayer(session: TeamSession, discordUserId: string) {
     .some((assignment) => assignment.discordUserId === discordUserId);
 }
 
-export async function listRecentSessions(limit = 5): Promise<TeamSession[]> {
+export async function listRecentSessions(
+  limit = 5,
+  algorithmVersion?: string,
+): Promise<TeamSession[]> {
   await ensureCollection(COLLECTIONS.sessions);
   return (await soda.list<TeamSession>(COLLECTIONS.sessions))
     .map((document) => document.value)
+    .filter((session) =>
+      !algorithmVersion || session.composition.algorithmVersion === algorithmVersion)
     .sort((left, right) => right.confirmedAt - left.confirmedAt)
     .slice(0, limit);
 }
