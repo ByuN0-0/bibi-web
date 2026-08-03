@@ -19,7 +19,7 @@ export default function Footer() {
               <Image src="/images/bibi-logo.png" alt="" width={42} height={42} className="h-[42px] w-[42px] rounded-full object-cover" />
               <span className="text-lg font-bold">비비</span>
             </Link>
-            <p className="mt-4 text-sm leading-6 text-[var(--muted)]">
+            <p className="mt-4 break-keep text-sm leading-6 text-[var(--muted)]">
               친구들의 일상과 LoL 내전을 가볍고 편리하게 돕는 Discord 봇입니다.
             </p>
           </div>
