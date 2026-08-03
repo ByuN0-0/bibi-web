@@ -1,6 +1,6 @@
 "use client";
 
-import {useEffect, useState} from "react";
+import {useEffect, useRef, useState} from "react";
 import {useRouter} from "next/navigation";
 import TeamBuilder from "@/app/lol-statics/components/TeamBuilder";
 import PublicMatchHistory from "@/app/lol-statics/components/PublicMatchHistory";
@@ -24,15 +24,18 @@ export default function PublicLolHub({players, accounts, playerParticipation, pl
   const [historyLoaded, setHistoryLoaded] = useState(false);
   const [historyLoading, setHistoryLoading] = useState(false);
   const [historyError, setHistoryError] = useState("");
+  const historyRequestPending = useRef(false);
 
   useEffect(() => {
-    if (initialTab === "history") void loadHistory(0);
-    // The initial tab is fixed for this mount; later changes go through selectTab.
+    setTab(initialTab);
+    if (initialTab === "history" && !historyLoaded) void loadHistory(0);
+    // URL navigation changes initialTab; request state is intentionally managed inside loadHistory.
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, []);
+  }, [initialTab]);
 
   async function loadHistory(offset = nextOffset ?? 0) {
-    if (historyLoading || (historyLoaded && nextOffset === null)) return;
+    if (historyRequestPending.current || (historyLoaded && nextOffset === null)) return;
+    historyRequestPending.current = true;
     setHistoryLoading(true);
     setHistoryError("");
     try {
@@ -45,6 +48,7 @@ export default function PublicLolHub({players, accounts, playerParticipation, pl
     } catch (loadError) {
       setHistoryError(loadError instanceof Error ? loadError.message : "내전 기록을 불러오지 못했습니다.");
     } finally {
+      historyRequestPending.current = false;
       setHistoryLoading(false);
     }
   }

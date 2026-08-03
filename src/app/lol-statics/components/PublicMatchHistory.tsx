@@ -56,7 +56,10 @@ function MatchHistoryCard({result, playerRanks, playerNames}: {result: PublicMat
 
   return (
     <details className={`group overflow-hidden rounded-xl border border-[var(--hairline-soft)] border-l-4 bg-white ${blueWinner ? "border-l-[#4f83e3]" : "border-l-[#e94f6d]"}`}>
-      <summary className="relative cursor-pointer list-none px-3.5 py-2 transition-colors hover:bg-[var(--surface-soft)] [&::-webkit-details-marker]:hidden">
+      <summary
+        className="relative cursor-pointer list-none px-3.5 py-2 transition-colors hover:bg-[var(--surface-soft)] [&::-webkit-details-marker]:hidden"
+        style={{backgroundImage: "linear-gradient(90deg, rgba(79, 131, 227, 0.07) 0%, rgba(79, 131, 227, 0.02) 30%, transparent 46%, transparent 54%, rgba(233, 79, 109, 0.02) 70%, rgba(233, 79, 109, 0.07) 100%)"}}
+      >
         <div className="grid gap-3 md:grid-cols-[100px_minmax(0,1fr)] lg:grid-cols-[88px_360px_minmax(0,1fr)] lg:items-center lg:gap-x-6">
           <MatchInfo winner={result.winner} durationSeconds={result.durationSeconds} />
           <TeamTotals blue={blueStats} red={redStats} />

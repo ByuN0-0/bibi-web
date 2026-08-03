@@ -63,7 +63,8 @@ function TeamScoreboard({team, winner, version, durationSeconds, stats, particip
       </header>
 
       <div className="hidden overflow-x-auto md:block">
-        <table className="w-full min-w-[860px] border-collapse text-xs">
+        <table className="w-full min-w-[920px] table-fixed border-collapse text-xs">
+          <ScoreboardColumnLayout />
           <thead className="bg-[var(--surface-soft)] text-left text-[11px] font-semibold uppercase leading-none tracking-wide text-[var(--muted)]">
             <tr><th className="px-3 py-2">선수</th><th className="px-3 py-2">룬·주문</th><th className="px-3 py-2 text-center">K/D/A</th><th className="px-3 py-2 text-right">CS</th><th className="px-3 py-2 text-right">골드</th><th className="px-3 py-2">아이템</th></tr>
           </thead>
@@ -74,6 +75,19 @@ function TeamScoreboard({team, winner, version, durationSeconds, stats, particip
         {participants.map((participant, index) => <MobilePlayerCard key={`${participant.role}-${participant.observedName}-${index}`} participant={participant} version={version} durationSeconds={durationSeconds} compact={compact} playerRank={playerRanks?.[playerNameKey(participant.observedName)]} />)}
       </div>
     </section>
+  );
+}
+
+function ScoreboardColumnLayout() {
+  return (
+    <colgroup>
+      <col style={{width: "31%"}} />
+      <col style={{width: "15%"}} />
+      <col style={{width: "10%"}} />
+      <col style={{width: "7%"}} />
+      <col style={{width: "8%"}} />
+      <col style={{width: "29%"}} />
+    </colgroup>
   );
 }
 
