@@ -1,14 +1,14 @@
 export const CANVAS = {width: 1028, height: 604};
 export const REFERENCE_ROWS = {
-  BLUE: [207, 242, 277, 312, 347],
-  RED: [422, 457, 492, 527, 562],
+  BLUE: [202, 237, 272, 307, 342],
+  RED: [417, 452, 487, 522, 557],
 };
-const REFERENCE_GRID = {BLUE_TOP: 190, RED_TOP: 407, ITEM_LEFT: 288};
+export const REFERENCE_GRID = {BLUE_TOP: 189, RED_TOP: 405, ITEM_LEFT: 290, ITEM_GAP: 25};
 const REFERENCE_ANCHOR = {x: 942, y: 36};
 export const MATCH_ROLE_ORDER = ["TOP", "JUNGLE", "MIDDLE", "BOTTOM", "UTILITY"];
 
 export function detectScoreboardLayout(data, info) {
-  if (info.width !== CANVAS.width || info.channels < 3) throw new Error("layout detector requires a 1028px RGB image");
+  if (info.width < 900 || info.height < 560 || info.channels < 3) throw new Error("layout detector requires an unscaled scoreboard RGB image");
   const gold = (x, y) => {
     if (x < 0 || x >= info.width || y < 0 || y >= info.height) return false;
     const index = (y * info.width + x) * info.channels;
@@ -17,8 +17,8 @@ export function detectScoreboardLayout(data, info) {
       && red > blue * 1.35 && green > blue * 1.15;
   };
   let bestAnchor = {x: REFERENCE_ANCHOR.x, y: REFERENCE_ANCHOR.y, score: -1};
-  for (let centerY = 16; centerY <= 70; centerY += 1) {
-    for (let centerX = 820; centerX <= 990; centerX += 1) {
+  for (let centerY = 16; centerY <= Math.min(70, info.height - 17); centerY += 1) {
+    for (let centerX = Math.max(780, info.width - 220); centerX <= Math.min(990, info.width - 17); centerX += 1) {
       let matches = 0; let samples = 0;
       for (let degrees = 0; degrees < 360; degrees += 5) {
         const radians = degrees * Math.PI / 180;
@@ -129,6 +129,14 @@ export function parseDuration(text) {
   return seconds < 60 ? minutes * 60 + seconds : null;
 }
 
+export function parseKda(text) {
+  const normalized = String(text ?? "")
+    .replace(/[OoQ]/g, "0")
+    .replace(/[Il|]/g, "1");
+  const match = normalized.match(/(\d{1,2})\D+(\d{1,2})\D+(\d{1,2})/);
+  return match ? match.slice(1, 4).map(Number) : null;
+}
+
 export function normalizeName(value) {
   return String(value ?? "").normalize("NFC").toLocaleLowerCase("ko-KR").replace(/[^0-9a-z가-힣]/g, "");
 }
@@ -189,22 +197,6 @@ export function validateMechanicalTotals(teamStats, participants) {
   return errors;
 }
 
-export function participantRowOffsets(layout) {
-  const {source, transform} = layout;
-  const offsets = {};
-  for (const team of ["BLUE", "RED"]) {
-    const firstTop = team === "BLUE" ? source.blueTop : source.redTop;
-    const referenceTop = team === "BLUE" ? REFERENCE_GRID.BLUE_TOP : REFERENCE_GRID.RED_TOP;
-    offsets[team] = REFERENCE_ROWS[team].map((_, index) => {
-      const sourceTop = firstTop + index * source.rowGap;
-      const alignedTop = sourceTop * transform.yScale + transform.yOffset;
-      const rounded = Math.round(alignedTop - (referenceTop + index * 35));
-      return Object.is(rounded, -0) ? 0 : rounded;
-    });
-  }
-  return offsets;
-}
-
 export function repairMissingParticipantTotals(teamStats, participants) {
   const repairs = [];
   const fields = [["kills", "kills"], ["deaths", "deaths"], ["assists", "assists"], ["goldTotal", "goldEarned"]];
@@ -218,6 +210,25 @@ export function repairMissingParticipantTotals(teamStats, participants) {
       if (!Number.isInteger(derived) || derived < 0) continue;
       missing[0].participant[participantField] = derived;
       repairs.push({team: stats.team, participantIndex: missing[0].index, field: participantField, value: derived});
+    }
+  }
+  return repairs;
+}
+
+export function repairImplausibleParticipantTotals(teamStats, participants) {
+  const repairs = [];
+  const fields = [["kills", "kills"], ["deaths", "deaths"], ["assists", "assists"], ["goldTotal", "goldEarned"]];
+  for (const stats of teamStats) {
+    const members = participants.map((participant, index) => ({participant, index})).filter(({participant}) => participant.team === stats.team);
+    for (const [teamField, participantField] of fields) {
+      const impossible = members.filter(({participant}) => participant[participantField] > stats[teamField]);
+      if (impossible.length !== 1) continue;
+      const target = impossible[0];
+      const otherTotal = members.reduce((sum, entry) => sum + (entry === target ? 0 : entry.participant[participantField]), 0);
+      const derived = stats[teamField] - otherTotal;
+      if (!Number.isInteger(derived) || derived < 0 || derived >= target.participant[participantField]) continue;
+      target.participant[participantField] = derived;
+      repairs.push({team: stats.team, participantIndex: target.index, field: participantField, value: derived});
     }
   }
   return repairs;

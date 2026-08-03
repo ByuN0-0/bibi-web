@@ -15,8 +15,10 @@ import {
   parseDate,
   parseDuration,
   parseInteger,
-  participantRowOffsets,
+  parseKda,
+  REFERENCE_GRID,
   REFERENCE_ROWS,
+  repairImplausibleParticipantTotals,
   repairMissingParticipantTotals,
   validateMechanicalTotals,
 } from "./scoreboard-machine-core.mjs";
@@ -34,15 +36,14 @@ export async function readScoreboardImage(original, options = {}) {
   const startedAt = performance.now();
   players = options.players ?? [];
   const cacheRoot = options.cacheRoot ?? tmpdir();
-  const normalized = await sharp(original).resize({width: CANVAS.width}).png().toBuffer();
-  const {data: normalizedRaw, info: normalizedInfo} = await sharp(normalized).removeAlpha().raw().toBuffer({resolveWithObject: true});
-  const layout = detectScoreboardLayout(normalizedRaw, normalizedInfo);
+  const {data: sourceRaw, info: sourceInfo} = await sharp(original).removeAlpha().raw().toBuffer({resolveWithObject: true});
+  const layout = detectScoreboardLayout(sourceRaw, sourceInfo);
   if (layout.confidence < 0.42) fail(`점수판 아이템 슬롯 앵커를 찾지 못했습니다. confidence=${layout.confidence.toFixed(2)}`);
-  // Screenshots retain their native pixel scale. Use the fixed top-right UI
-  // anchor to translate the whole scoreboard without resampling it.
-  aligned = await alignToCanvas(normalized, normalizedInfo, layout.transform);
+  // Preserve every source pixel. The download-button anchor supplies one dx/dy
+  // translation for the whole screenshot; every OCR and asset crop then uses
+  // the same canonical coordinates without reusing detected row/grid offsets.
+  aligned = await alignToCanvas(original, sourceInfo, layout.transform);
   const assetAligned = aligned;
-  const rowOffsets = participantRowOffsets(layout);
   const ocrCachePath = join(cacheRoot, "bibi-tesseract-cache");
   await mkdir(ocrCachePath, {recursive: true});
   const workers = await getWorkers(ocrCachePath, options.reuseWorkers ?? false);
@@ -54,9 +55,8 @@ export async function readScoreboardImage(original, options = {}) {
   try {
     recognizedPayload = await recognizeScoreboard(original, {
       inventoryImage: assetAligned,
-      itemGridLeft: layout.source.itemGridLeft + layout.transform.xOffset,
-      itemSlotGap: layout.source.itemSlotGap,
-      rowOffsets,
+      itemGridLeft: REFERENCE_GRID.ITEM_LEFT,
+      itemSlotGap: REFERENCE_GRID.ITEM_GAP,
     });
   } finally {
     if (!(options.reuseWorkers ?? false)) await Promise.all([worker.terminate(), englishWorker.terminate()]);
@@ -68,9 +68,8 @@ export async function readScoreboardImage(original, options = {}) {
       screenshot: assetAligned,
       cacheDir: join(cacheRoot, "bibi-ddragon-cache"),
       allowAmbiguous: options.allowAmbiguous ?? true,
-      itemGridLeft: layout.source.itemGridLeft + layout.transform.xOffset,
-      itemSlotGap: layout.source.itemSlotGap,
-      rowOffsets,
+      itemGridLeft: REFERENCE_GRID.ITEM_LEFT,
+      itemSlotGap: REFERENCE_GRID.ITEM_GAP,
     });
     resolvedPayload = resolved.payload;
     report.assets = resolved.assets;
@@ -99,16 +98,17 @@ function textField(field, rectangle, type = "text") {
   return pending;
 }
 async function recognizeField(field, rectangle, type) {
-  const image = await prepareOcrCrop(aligned, rectangle, type);
+  const numericType = type === "number" || type === "number-high";
+  const image = await prepareOcrCrop(aligned, rectangle, numericType ? "number" : type, type === "number-high");
   await worker.setParameters({
     tessedit_pageseg_mode: PSM.SINGLE_LINE,
-    tessedit_char_whitelist: type === "number" ? "0123456789" : type === "time" ? "0123456789:/.-" : "",
+    tessedit_char_whitelist: numericType ? "0123456789" : ["time", "kda"].includes(type) ? "0123456789:/.-" : "",
     preserve_interword_spaces: "1",
     user_defined_dpi: "300",
   });
   let result = await worker.recognize(image);
   if (type === "number" && (parseInteger(result.data.text) === null || result.data.confidence < 40)) {
-    const fallbackImage = await prepareOcrCrop(aligned, rectangle, type, true);
+    const fallbackImage = await prepareOcrCrop(aligned, rectangle, "number", true);
     const fallback = await worker.recognize(fallbackImage);
     if (parseInteger(fallback.data.text) !== null && (parseInteger(result.data.text) === null || fallback.data.confidence > result.data.confidence)) result = fallback;
   }
@@ -126,6 +126,11 @@ async function englishNameField(field, rectangle) {
   return entry;
 }
 
+async function kdaField(field, centerY) {
+  const result = await textField(field, {left: 510, top: centerY - 13, width: 112, height: 26}, "kda");
+  return parseKda(result.text);
+}
+
 async function recognizeScoreboard(original, assetLayout) {
   const [resultText, durationText, dateText] = await Promise.all([
     textField("result", {left: 66, top: 12, width: 86, height: 32}),
@@ -140,15 +145,17 @@ async function recognizeScoreboard(original, assetLayout) {
   if (!winner) fail(`승패를 읽지 못했습니다: ${resultText.text || "(empty)"}`);
 
   const teamStats = [];
-  for (const [team, centerY] of [["BLUE", 169], ["RED", 384]]) {
-    const [kills, deaths, assists, goldTotal] = await Promise.all([
-      numberField(`${team}.kills`, 143, centerY, 32),
-      numberField(`${team}.deaths`, 189, centerY, 32),
-      numberField(`${team}.assists`, 234, centerY, 32),
+  for (const [team, centerY] of [["BLUE", 164], ["RED", 379]]) {
+    const [teamKda, fallbackKills, fallbackDeaths, fallbackAssists, goldTotal] = await Promise.all([
+      textField(`${team}.kda`, {left: 124, top: centerY - 13, width: 126, height: 26}, "kda").then((result) => parseKda(result.text)),
+      numberField(`${team}.kills`, 143, centerY, 32, {allowMissing: true}),
+      numberField(`${team}.deaths`, 189, centerY, 32, {allowMissing: true}),
+      numberField(`${team}.assists`, 234, centerY, 32, {allowMissing: true}),
       numberField(`${team}.gold`, 380, centerY, 70),
     ]);
-    const objectiveY = team === "BLUE" ? 314 : 529;
-    const objectiveXs = [849, 878, 907, 936, 965, 994];
+    const [kills, deaths, assists] = teamKda ?? [fallbackKills, fallbackDeaths, fallbackAssists];
+    const objectiveY = team === "BLUE" ? 306 : 521;
+    const objectiveXs = [861, 890, 919, 948, 977, 1006];
     const objectiveValues = await Promise.all(objectiveXs.map((x, index) => numberField(`${team}.objective.${index}`, x, objectiveY, 24, {blankIsZero: true})));
     teamStats.push({
       team, kills, deaths, assists, goldTotal,
@@ -161,27 +168,31 @@ async function recognizeScoreboard(original, assetLayout) {
   }
 
   const participants = [];
+  const numericAlternatives = [];
   for (const team of ["BLUE", "RED"]) {
     for (let rowIndex = 0; rowIndex < 5; rowIndex += 1) {
       const row = REFERENCE_ROWS[team][rowIndex];
       const index = participants.length;
       const nameRectangle = {left: 124, top: row - 13, width: 154, height: 26};
-      const [nameResult, englishNameResult, level, kills, deaths, assists, cs, goldEarned] = await Promise.all([
+      const [nameResult, englishNameResult, level, combinedKda, fallbackKills, fallbackDeaths, fallbackAssists, cs, goldEarned, wideGold] = await Promise.all([
         textField(`participants.${index}.name`, nameRectangle),
         englishNameField(`participants.${index}.nameEnglish`, nameRectangle),
         numberField(`participants.${index}.level`, 72, row, 28),
-        numberField(`participants.${index}.kills`, 516, row, 22, {narrowRetry: true, allowMissing: true}),
-        numberField(`participants.${index}.deaths`, 551, row, 22, {narrowRetry: true, allowMissing: true}),
-        numberField(`participants.${index}.assists`, 594, row, 22, {narrowRetry: true, allowMissing: true}),
+        kdaField(`participants.${index}.kda`, row),
+        numberField(`participants.${index}.kills`, 526, row, 24, {narrowRetry: true, allowMissing: true}),
+        numberField(`participants.${index}.deaths`, 561, row, 24, {narrowRetry: true, allowMissing: true}),
+        numberField(`participants.${index}.assists`, 604, row, 24, {narrowRetry: true, allowMissing: true}),
         numberField(`participants.${index}.cs`, 661, row, 48),
         numberField(`participants.${index}.gold`, 740, row, 64, {allowMissing: true}),
+        numberField(`participants.${index}.goldWide`, 746, row, 76, {allowMissing: true, highContrast: true}),
       ]);
+      const fallbackKda = [fallbackKills, fallbackDeaths, fallbackAssists];
+      const [kills, deaths, assists] = combinedKda ?? fallbackKda;
       const combinedName = `${englishNameResult.text.replace(/[^0-9a-z]/gi, "")}${nameResult.text.replace(/[^가-힣]/g, "")}`;
       const matches = [nameResult.text, englishNameResult.text, combinedName].map((name) => matchRegisteredPlayer(name, players)).filter(Boolean);
       const matched = matches.sort((left, right) => right.confidence - left.confidence)[0] ?? null;
       const detectedName = matched ? matched.observedName : englishNameResult.confidence > nameResult.confidence ? englishNameResult.text : nameResult.text;
-      const assetRow = row + (assetLayout.rowOffsets[team]?.[rowIndex] ?? 0);
-      const inventory = participantInventoryCoordinates(assetRow, assetLayout.itemGridLeft, assetLayout.itemSlotGap);
+      const inventory = participantInventoryCoordinates(row, assetLayout.itemGridLeft, assetLayout.itemSlotGap);
       const items = await Promise.all(inventory.items.map(async (rectangle) => (
         await occupied(assetLayout.inventoryImage, rectangle) ? "?" : null
       )));
@@ -197,22 +208,59 @@ async function recognizeScoreboard(original, assetLayout) {
         trinket: "?",
         questSlot: "?",
       });
+      numericAlternatives.push({
+        kills: [kills, fallbackKills], deaths: [deaths, fallbackDeaths], assists: [assists, fallbackAssists],
+        goldEarned: [goldEarned, wideGold],
+      });
       ocrLog.push({field: `participants.${index}.mapping`, text: matched ? `${matched.displayName}:${matched.observedName}` : "guest", confidence: matched?.confidence ? matched.confidence * 100 : 0});
     }
   }
 
+  reconcileNumericAlternatives(teamStats, participants, numericAlternatives);
   for (const repair of repairMissingParticipantTotals(teamStats, participants)) {
+    ocrLog.push({field: `participants.${repair.participantIndex}.${repair.field}.derived`, text: String(repair.value), confidence: 100});
+  }
+  for (const repair of repairImplausibleParticipantTotals(teamStats, participants)) {
     ocrLog.push({field: `participants.${repair.participantIndex}.${repair.field}.derived`, text: String(repair.value), confidence: 100});
   }
   ensureNumbers(teamStats, participants);
   const totalErrors = validateMechanicalTotals(teamStats, participants);
-  if (totalErrors.length) fail(`OCR 합계 검증에 실패했습니다:\n${totalErrors.map((error) => `- ${error}`).join("\n")}`);
+  if (totalErrors.length) {
+    const kdaRows = participants.map(({team, kills, deaths, assists}) => `${team}:${kills}/${deaths}/${assists}`).join(", ");
+    fail(`OCR 합계 검증에 실패했습니다:\n${totalErrors.map((error) => `- ${error}`).join("\n")}\n- rows: ${kdaRows}`);
+  }
   return {
     action: "validate",
     ingestionId: `lol-scoreboard:${createHash("sha256").update(original).digest("hex")}`,
     playedOn, winner, durationSeconds,
     teamStats, participants,
   };
+}
+
+function reconcileNumericAlternatives(teamStats, participants, alternatives) {
+  const fields = [["kills", "kills"], ["deaths", "deaths"], ["assists", "assists"], ["goldTotal", "goldEarned"]];
+  for (const stats of teamStats) {
+    const memberIndexes = participants.map((participant, index) => ({participant, index})).filter(({participant}) => participant.team === stats.team).map(({index}) => index);
+    for (const [teamField, participantField] of fields) {
+      const pools = memberIndexes.map((index) => [...new Set(alternatives[index][participantField].filter(Number.isInteger))]);
+      let selected = null;
+      const visit = (memberIndex, values, sum) => {
+        if (selected || sum > stats[teamField]) return;
+        if (memberIndex === pools.length) {
+          if (sum === stats[teamField]) selected = [...values];
+          return;
+        }
+        for (const value of pools[memberIndex]) {
+          values.push(value); visit(memberIndex + 1, values, sum + value); values.pop();
+        }
+      };
+      visit(0, [], 0);
+      if (!selected) continue;
+      memberIndexes.forEach((participantIndex, memberIndex) => {
+        participants[participantIndex][participantField] = selected[memberIndex];
+      });
+    }
+  }
 }
 
 async function runCli() {
@@ -238,8 +286,8 @@ async function runCli() {
   process.stdout.write(`Mechanical scoreboard read completed in ${result.report.elapsedMs}ms (alignment confidence ${(result.report.layout.confidence * 100).toFixed(0)}%).\n`);
 }
 
-async function numberField(field, centerX, centerY, width, {blankIsZero = false, narrowRetry = false, allowMissing = false} = {}) {
-  let result = await textField(field, {left: Math.round(centerX - width / 2), top: centerY - 13, width, height: 26}, "number");
+async function numberField(field, centerX, centerY, width, {blankIsZero = false, narrowRetry = false, allowMissing = false, highContrast = false} = {}) {
+  let result = await textField(field, {left: Math.round(centerX - width / 2), top: centerY - 13, width, height: 26}, highContrast ? "number-high" : "number");
   let value = parseInteger(result.text);
   if (value === null && narrowRetry) {
     result = await textField(`${field}.narrow`, {left: Math.round(centerX - 12), top: centerY - 13, width: 18, height: 26}, "number");
@@ -252,22 +300,22 @@ async function numberField(field, centerX, centerY, width, {blankIsZero = false,
 }
 
 async function alignToCanvas(buffer, info, transform) {
-  const width = Math.max(1, Math.round(info.width * transform.xScale));
-  const height = Math.max(1, Math.round(info.height * transform.yScale));
-  const resized = await sharp(buffer).resize({width, height, fit: "fill"}).png().toBuffer();
+  if (transform.xScale !== 1 || transform.yScale !== 1) fail("점수판 정렬은 리사이즈를 허용하지 않습니다.");
+  const width = info.width;
+  const height = info.height;
   const left = Math.round(transform.xOffset); const top = Math.round(transform.yOffset);
   const sourceLeft = Math.max(0, -left); const sourceTop = Math.max(0, -top);
   const destinationLeft = Math.max(0, left); const destinationTop = Math.max(0, top);
   const copyWidth = Math.min(width - sourceLeft, CANVAS.width - destinationLeft);
   const copyHeight = Math.min(height - sourceTop, CANVAS.height - destinationTop);
   if (copyWidth <= 0 || copyHeight <= 0) fail("정렬 변환 결과가 캔버스를 벗어났습니다.");
-  const visible = await sharp(resized).extract({left: sourceLeft, top: sourceTop, width: copyWidth, height: copyHeight}).png().toBuffer();
+  const visible = await sharp(buffer).extract({left: sourceLeft, top: sourceTop, width: copyWidth, height: copyHeight}).removeAlpha().png().toBuffer();
   return sharp({create: {width: CANVAS.width, height: CANVAS.height, channels: 3, background: "#001018"}})
     .composite([{input: visible, left: destinationLeft, top: destinationTop}]).png().toBuffer();
 }
 
 async function prepareOcrCrop(buffer, rectangle, type, highContrast = false) {
-  const scale = type === "number" ? 5 : 4;
+  const scale = ["number", "kda"].includes(type) ? 5 : 4;
   let pipeline = sharp(buffer)
     .extract(clampRectangle(rectangle))
     .resize({width: rectangle.width * scale, height: rectangle.height * scale, kernel: "lanczos3"})

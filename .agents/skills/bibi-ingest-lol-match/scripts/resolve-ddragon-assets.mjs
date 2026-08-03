@@ -4,7 +4,7 @@ import {mkdir, readFile, writeFile} from "node:fs/promises";
 import {tmpdir} from "node:os";
 import {join} from "node:path";
 import {pathToFileURL} from "node:url";
-import {MATCH_ROLE_ORDER, selectTeamSpellQuestAssignments, selectUniqueAssetAssignments} from "./scoreboard-machine-core.mjs";
+import {MATCH_ROLE_ORDER, REFERENCE_ROWS, selectTeamSpellQuestAssignments, selectUniqueAssetAssignments} from "./scoreboard-machine-core.mjs";
 
 const ORIGIN = "https://ddragon.leagueoflegends.com";
 const SCOREBOARD_KEYSTONE_NAMES = new Set([
@@ -40,7 +40,7 @@ export async function resolveDataDragonAssets(input, options = {}) {
   cacheDir = options.cacheDir ?? join(tmpdir(), "bibi-ddragon-cache");
   offsetY = options.offsetY ?? 0;
   banOffsetY = options.banOffsetY ?? offsetY;
-  itemGridLeft = options.itemGridLeft ?? 281;
+  itemGridLeft = options.itemGridLeft ?? 290;
   itemSlotGap = options.itemSlotGap ?? 25;
   rowOffsets = options.rowOffsets ?? {};
   allowAmbiguous = options.allowAmbiguous ?? false;
@@ -102,7 +102,7 @@ export async function resolveDataDragonAssets(input, options = {}) {
     if (!(participant.team in teamRowIndex)) fail(`participants[${index}].team must be BLUE or RED.`);
     const teamOffset = teamRowIndex[participant.team]++;
     if (teamOffset > 4) fail(`${participant.team} contains more than five participant rows.`);
-    const referenceRow = (participant.team === "BLUE" ? [207, 242, 277, 312, 347] : [422, 457, 492, 527, 562])[teamOffset];
+    const referenceRow = REFERENCE_ROWS[participant.team][teamOffset];
     const row = referenceRow + offsetY + (rowOffsets[participant.team]?.[teamOffset] ?? 0);
     const assetCoordinates = participantAssetCoordinates(row);
     participant.champion = await resolveValue(participant.champion, "champion", `participants[${index}].champion`, assetCoordinates.champion);
@@ -140,7 +140,7 @@ async function runCli() {
       cacheDir: option(argv, "--cache") ?? join(tmpdir(), "bibi-ddragon-cache"),
       offsetY: numberOption(argv, "--offset-y", 0),
       banOffsetY: numberOption(argv, "--ban-offset-y", numberOption(argv, "--offset-y", 0)),
-      itemGridLeft: numberOption(argv, "--item-grid-left", 281),
+      itemGridLeft: numberOption(argv, "--item-grid-left", 290),
       itemSlotGap: numberOption(argv, "--item-slot-gap", 25),
       allowAmbiguous: argv.includes("--allow-ambiguous"),
     });
@@ -308,7 +308,7 @@ async function compareBanOverlayCandidates(candidates, target, model) {
 }
 
 async function normalizedCropTargets(sharp, normalizedScreen, crop, kind) {
-  const searchable = ["ban", "spell", "perk"].includes(kind);
+  const searchable = ["ban", "spell", "perk", "item"].includes(kind);
   const offsets = searchable ? [-1, 0, 1].flatMap((dy) => [-1, 0, 1].map((dx) => ({dx, dy}))) : [{dx: 0, dy: 0}];
   return Promise.all(offsets.map(async ({dx, dy}) => ({
     dx,
@@ -603,25 +603,23 @@ function applyUniqueTeamBans(teamIndex) {
 function banCoordinates(team) { const top = (team === "BLUE" ? 198 : 413) + banOffsetY; return [[845, top], [910, top], [975, top], [845, top + 35], [910, top + 35]].map(([left, y]) => ({left, top: y, width: 24, height: 24})); }
 export function participantAssetCoordinates(row) {
   return {
-    // The portrait's visible circle is centered at x=108. The old x=89 crop
-    // clipped its right edge and compared three columns of empty background.
-    champion: {left: 92, top: row - 16, width: 32, height: 32},
-    perk: {left: 18, top: row - 10, width: 20, height: 20},
+    champion: {left: 97, top: row - 16, width: 32, height: 32},
+    perk: {left: 23, top: row - 10, width: 20, height: 20},
     // Each spell's 11px artwork sits inside a shared gold frame. The second
     // icon starts at row+1; row+3 included its lower frame and page background.
     spells: [
-      {left: 43, top: row - 12, width: 11, height: 11},
-      {left: 43, top: row + 1, width: 11, height: 11},
+      {left: 49, top: row - 12, width: 11, height: 11},
+      {left: 49, top: row + 1, width: 11, height: 11},
     ],
   };
 }
-export function participantInventoryCoordinates(row, gridLeft = itemGridLeft ?? 281, slotGap = itemSlotGap ?? 25) {
+export function participantInventoryCoordinates(row, gridLeft = itemGridLeft ?? 290, slotGap = itemSlotGap ?? 25) {
   const standardInset = Math.max(2, Math.round(slotGap * 3 / 25));
   const questInset = Math.round(slotGap * 9 / 25) + 2;
   return {
-    items: Array.from({length: 6}, (_, index) => ({left: gridLeft + index * slotGap + standardInset, top: row - 10, width: 22, height: 22})),
-    trinket: {left: gridLeft + 6 * slotGap + standardInset, top: row - 10, width: 22, height: 22},
-    quest: {left: gridLeft + 7 * slotGap + questInset, top: row - 10, width: 22, height: 22},
+    items: Array.from({length: 6}, (_, index) => ({left: gridLeft + index * slotGap + standardInset, top: row - 12, width: 22, height: 22})),
+    trinket: {left: gridLeft + 6 * slotGap + standardInset, top: row - 12, width: 22, height: 22},
+    quest: {left: gridLeft + 7 * slotGap + questInset, top: row - 12, width: 22, height: 22},
   };
 }
 function normalize(value) { return String(value).normalize("NFC").trim().replace(/\s+/g, " ").toLocaleLowerCase("ko-KR"); }

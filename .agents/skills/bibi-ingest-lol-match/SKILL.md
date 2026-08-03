@@ -20,7 +20,7 @@ This command loads the cached player catalog, performs mechanical OCR and asset 
 ## Required workflow
 
 1. Read `references/payload-schema.md` before extracting values.
-2. Run the mechanical reader first. It detects item-slot borders as anchors, aligns different screenshot dimensions to the canonical canvas, runs local Korean/English OCR, verifies team totals, maps registered main/alt Riot IDs, and resolves Data Dragon assets:
+2. Run the mechanical reader first. It uses the top-right download button as a fixed anchor, translates the unscaled screenshot into the canonical canvas, runs local Korean/English OCR, verifies team totals, maps registered main/alt Riot IDs, and resolves Data Dragon assets:
 
    ```bash
    node --env-file=.env .agents/skills/bibi-ingest-lol-match/scripts/read-scoreboard.mjs scoreboard.png \

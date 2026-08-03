@@ -6,7 +6,8 @@ import {
   parseDate,
   parseDuration,
   parseInteger,
-  participantRowOffsets,
+  parseKda,
+  repairImplausibleParticipantTotals,
   repairMissingParticipantTotals,
   roleFromQuest,
   selectSpellQuestCombination,
@@ -22,6 +23,7 @@ describe("scoreboard machine parsing", () => {
     expect(parseDate("2026-07-30")).toBe("2026-07-30");
     expect(parseDuration("23-32")).toBe(23 * 60 + 32);
     expect(parseDuration("34:-09")).toBe(34 * 60 + 9);
+    expect(parseKda("11 / 3 / 13")).toEqual([11, 3, 13]);
   });
 
   it("matches Korean, English and OCR-confusable alt account names", () => {
@@ -47,6 +49,14 @@ describe("scoreboard machine parsing", () => {
     const teamStats = [{team: "RED", kills: 15, deaths: 10, assists: 30, goldTotal: 5000}];
     expect(repairMissingParticipantTotals(teamStats, participants)).toEqual([{team: "RED", participantIndex: 0, field: "assists", value: 8}]);
     expect(participants[0].assists).toBe(8);
+    expect(validateMechanicalTotals(teamStats, participants)).toEqual([]);
+  });
+
+  it("replaces one impossible OCR value from the visible team total", () => {
+    const participants = [79, 3, 11, 10, 17].map((assists) => ({team: "BLUE", kills: 1, deaths: 1, assists, goldEarned: 1000}));
+    const teamStats = [{team: "BLUE", kills: 5, deaths: 5, assists: 54, goldTotal: 5000}];
+    expect(repairImplausibleParticipantTotals(teamStats, participants)).toEqual([{team: "BLUE", participantIndex: 0, field: "assists", value: 13}]);
+    expect(participants[0].assists).toBe(13);
     expect(validateMechanicalTotals(teamStats, participants)).toEqual([]);
   });
 });
@@ -182,6 +192,15 @@ describe("ban assignment constraints", () => {
 });
 
 describe("scoreboard anchor detection", () => {
+  const paintDownloadAnchor = (paint, centerX, centerY) => {
+    for (let degrees = 0; degrees < 360; degrees += 5) {
+      const radians = degrees * Math.PI / 180;
+      for (const radius of [14, 15, 16]) {
+        paint(Math.round(centerX + Math.cos(radians) * radius), Math.round(centerY + Math.sin(radians) * radius));
+      }
+    }
+  };
+
   it("keeps purchasable and evolved Rift items while excluding hidden or unobtainable entries", () => {
     const riftItem = {maps: {"11": true}, gold: {purchasable: true}};
     expect(isObtainableInventoryItem("6690", riftItem)).toBe(true);
@@ -199,24 +218,24 @@ describe("scoreboard anchor detection", () => {
   });
 
   it("crops the portrait center and both spell interiors without their gold frame", () => {
-    expect(participantAssetCoordinates(207)).toEqual({
-      champion: {left: 92, top: 191, width: 32, height: 32},
-      perk: {left: 18, top: 197, width: 20, height: 20},
+    expect(participantAssetCoordinates(202)).toEqual({
+      champion: {left: 97, top: 186, width: 32, height: 32},
+      perk: {left: 23, top: 192, width: 20, height: 20},
       spells: [
-        {left: 43, top: 195, width: 11, height: 11},
-        {left: 43, top: 208, width: 11, height: 11},
+        {left: 49, top: 190, width: 11, height: 11},
+        {left: 49, top: 203, width: 11, height: 11},
       ],
     });
   });
 
-  it("uses the detected item grid for both empty-slot checks and asset matching", () => {
-    expect(participantInventoryCoordinates(276, 288, 25).items).toEqual([
-      {left: 291, top: 266, width: 22, height: 22},
-      {left: 316, top: 266, width: 22, height: 22},
-      {left: 341, top: 266, width: 22, height: 22},
-      {left: 366, top: 266, width: 22, height: 22},
-      {left: 391, top: 266, width: 22, height: 22},
-      {left: 416, top: 266, width: 22, height: 22},
+  it("uses the fixed item grid for both empty-slot checks and asset matching", () => {
+    expect(participantInventoryCoordinates(202, 290, 25).items).toEqual([
+      {left: 293, top: 190, width: 22, height: 22},
+      {left: 318, top: 190, width: 22, height: 22},
+      {left: 343, top: 190, width: 22, height: 22},
+      {left: 368, top: 190, width: 22, height: 22},
+      {left: 393, top: 190, width: 22, height: 22},
+      {left: 418, top: 190, width: 22, height: 22},
     ]);
   });
 
@@ -227,17 +246,18 @@ describe("scoreboard anchor detection", () => {
       const index = (y * CANVAS.width + x) * channels;
       data[index] = 120; data[index + 1] = 90; data[index + 2] = 10;
     };
-    const rowTops = [...Array.from({length: 5}, (_, index) => 190 + index * 35), ...Array.from({length: 5}, (_, index) => 407 + index * 35)];
+    const rowTops = [...Array.from({length: 5}, (_, index) => 189 + index * 35), ...Array.from({length: 5}, (_, index) => 405 + index * 35)];
     for (const top of rowTops) {
       for (let x = 245; x < 525; x += 1) { paint(x, top); paint(x, top + 24); }
       for (let boundary = 0; boundary <= 7; boundary += 1) {
-        const x = 288 + boundary * 25;
+        const x = 290 + boundary * 25;
         for (let y = top + 2; y < top + 23; y += 1) paint(x, y);
       }
       for (const x of [472, 497]) for (let y = top + 2; y < top + 23; y += 1) paint(x, y);
     }
+    paintDownloadAnchor(paint, 942, 36);
     const layout = detectScoreboardLayout(data, {width: CANVAS.width, height: CANVAS.height, channels});
-    expect(layout.source).toMatchObject({blueTop: 190, redTop: 407, rowGap: 35, cellHeight: 24, itemGridLeft: 288, itemSlotGap: 25});
+    expect(layout.source).toMatchObject({blueTop: 189, redTop: 405, rowGap: 35, cellHeight: 24, itemGridLeft: 290, itemSlotGap: 25});
     expect(layout.transform).toEqual({xScale: 1, xOffset: 0, yScale: 1, yOffset: 0});
     expect(layout.confidence).toBeGreaterThan(0.8);
   });
@@ -249,8 +269,8 @@ describe("scoreboard anchor detection", () => {
       const index = (y * CANVAS.width + x) * channels;
       data[index] = 120; data[index + 1] = 90; data[index + 2] = 10;
     };
-    const gap = 35; const height = 24; const start = 295; const slotGap = 25;
-    const rowTops = [...Array.from({length: 5}, (_, index) => 195 + index * gap), ...Array.from({length: 5}, (_, index) => 412 + index * gap)];
+    const gap = 35; const height = 24; const start = 297; const slotGap = 25;
+    const rowTops = [...Array.from({length: 5}, (_, index) => 194 + index * gap), ...Array.from({length: 5}, (_, index) => 410 + index * gap)];
     for (const top of rowTops) {
       for (let x = 225; x < 505; x += 1) { paint(x, top); paint(x, top + height); }
       for (let boundary = 0; boundary <= 7; boundary += 1) {
@@ -261,26 +281,36 @@ describe("scoreboard anchor detection", () => {
         for (let y = top + 2; y < top + height - 1; y += 1) paint(x, y);
       }
     }
+    paintDownloadAnchor(paint, 949, 41);
     const layout = detectScoreboardLayout(data, {width: CANVAS.width, height: CANVAS.height, channels});
-    expect(layout.source).toMatchObject({blueTop: 195, redTop: 412, rowGap: 35, itemGridLeft: 295, itemSlotGap: 25});
+    expect(layout.source).toMatchObject({blueTop: 194, redTop: 410, rowGap: 35, itemGridLeft: 297, itemSlotGap: 25});
     expect(layout.transform).toEqual({xScale: 1, xOffset: -7, yScale: 1, yOffset: -5});
-    expect(layout.source.blueTop + layout.transform.yOffset).toBe(190);
-    expect(layout.source.redTop + layout.transform.yOffset).toBe(407);
-    expect(layout.source.itemGridLeft + layout.transform.xOffset).toBe(288);
-    expect(participantRowOffsets(layout)).toEqual({
-      BLUE: [0, 0, 0, 0, 0],
-      RED: [0, 0, 0, 0, 0],
-    });
+    expect(layout.source.blueTop + layout.transform.yOffset).toBe(189);
+    expect(layout.source.redTop + layout.transform.yOffset).toBe(405);
+    expect(layout.source.itemGridLeft + layout.transform.xOffset).toBe(290);
   });
 
-  it("keeps team-specific row translation after global alignment", () => {
-    const layout = {
-      source: {blueTop: 190, redTop: 409, rowGap: 35, cellHeight: 24},
-      transform: {xScale: 1, xOffset: 0, yScale: 1, yOffset: -1},
+  it("aligns a cropped screenshot by translation without resizing its pixels", () => {
+    const width = 1017; const height = 599; const channels = 3;
+    const data = new Uint8Array(width * height * channels);
+    const paint = (x, y) => {
+      const index = (y * width + x) * channels;
+      data[index] = 120; data[index + 1] = 90; data[index + 2] = 10;
     };
-    expect(participantRowOffsets(layout)).toEqual({
-      BLUE: [-1, -1, -1, -1, -1],
-      RED: [1, 1, 1, 1, 1],
-    });
+    const rowTops = [...Array.from({length: 5}, (_, index) => 187 + index * 35), ...Array.from({length: 5}, (_, index) => 403 + index * 35)];
+    for (const top of rowTops) {
+      for (let x = 245; x < 525; x += 1) { paint(x, top); paint(x, top + 24); }
+      for (let boundary = 0; boundary <= 7; boundary += 1) {
+        const x = 281 + boundary * 25;
+        for (let y = top + 2; y < top + 23; y += 1) paint(x, y);
+      }
+      for (const x of [465, 490]) for (let y = top + 2; y < top + 23; y += 1) paint(x, y);
+    }
+    paintDownloadAnchor(paint, 933, 34);
+    const layout = detectScoreboardLayout(data, {width, height, channels});
+    expect(layout.transform).toEqual({xScale: 1, xOffset: 9, yScale: 1, yOffset: 2});
+    expect(layout.source.blueTop + layout.transform.yOffset).toBe(189);
+    expect(layout.source.redTop + layout.transform.yOffset).toBe(405);
+    expect(layout.source.itemGridLeft + layout.transform.xOffset).toBe(290);
   });
 });

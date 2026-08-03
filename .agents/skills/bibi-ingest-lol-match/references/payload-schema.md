@@ -68,24 +68,24 @@ Asset paths are relative Data Dragon paths. Champion, item, and spell paths star
 
 ## Fixed coordinate guide
 
-Normalize the screenshot to 1028 pixels wide without changing its aspect ratio. `read-scoreboard.mjs` detects the ten item-slot border rows and column grid first, then independently scales and translates x/y into the 1028×604 canonical canvas. The coordinates below are canonical targets, not assumptions about the source image size.
+Keep the screenshot at its original pixel size. `read-scoreboard.mjs` locates the top-right download-button center and translates the whole image into the 1028×604 canonical canvas without resizing. OCR, participant icons, inventory, quests, and bans all use the fixed canonical coordinates below; detected row and item borders are validation signals only.
 
-When the whole scoreboard is uniformly shifted vertically, pass `--offset-y <pixels>` to the resolver after width normalization. For example, use `--offset-y -8` when the first BLUE row center is 199 instead of 207.
+The fast reader performs the whole-screen translation before invoking the resolver. `--offset-y` remains available only for manually prepared, already aligned recognition drafts.
 If only the ban panel is vertically misaligned with the player rows, pass `--ban-offset-y <pixels>` separately. It defaults to the value of `--offset-y`.
 
-Player row centers: BLUE `207, 242, 277, 312, 347`; RED `422, 457, 492, 527, 562`.
+Player row centers: BLUE `202, 237, 272, 307, 342`; RED `417, 452, 487, 522, 557`.
 
 For each player row center `y`:
 
 | Slot | x | y offset | size |
 | --- | ---: | ---: | ---: |
-| Primary perk | 18 | -10 | 20×20 |
-| Summoner spell 1 | 43 | -12 | 11×11 |
-| Summoner spell 2 | 43 | 3 | 11×11 |
-| Champion portrait | 89 | -16 | 32×32 |
-| Items 1–6 | 284, 309, 334, 359, 384, 409 | -10 | 22×22 |
-| Trinket | 434 | -10 | 22×22 |
-| Quest slot | 467 | -10 | 22×22 |
+| Primary perk | 23 | -10 | 20×20 |
+| Summoner spell 1 | 49 | -12 | 11×11 |
+| Summoner spell 2 | 49 | 1 | 11×11 |
+| Champion portrait | 97 | -16 | 32×32 |
+| Items 1–6 | 293, 318, 343, 368, 393, 418 | -12 | 22×22 |
+| Trinket | 443 | -12 | 22×22 |
+| Quest slot | 476 | -12 | 22×22 |
 
 Ban crops are 24×24 at BLUE `(845,198) (910,198) (975,198) (845,233) (910,233)` and RED `(845,413) (910,413) (975,413) (845,448) (910,448)`. Mask diagonal ban slashes and outer borders before comparison.
 
