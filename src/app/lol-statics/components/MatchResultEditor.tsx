@@ -1,6 +1,6 @@
 "use client";
 
-import {useEffect, useMemo, useState, type FormEvent} from "react";
+import {useEffect, useMemo, useRef, useState, type FormEvent} from "react";
 import LolIcon from "@/app/components/LolIcon";
 import LolMatchScoreboard from "@/app/components/LolMatchScoreboard";
 import {swapMatchTeams} from "@/lib/lol/match-result-draft";
@@ -21,6 +21,7 @@ export default function MatchResultEditor({result, players}: {
   const [pending, setPending] = useState(false);
   const [error, setError] = useState("");
   const [picker, setPicker] = useState<PickerState | null>(null);
+  const savedNavigation = useRef(false);
   const normalizedResult = useMemo(() => ({...result, reviewStatus: matchReviewStatus(result), reviewIssues: matchReviewIssues(result)}), [result]);
   const dirty = JSON.stringify(draft) !== JSON.stringify(normalizedResult);
   const pendingReview = matchReviewStatus(draft) === "PENDING_REVIEW";
@@ -29,7 +30,7 @@ export default function MatchResultEditor({result, players}: {
 
   useEffect(() => {
     const warn = (event: BeforeUnloadEvent) => {
-      if (dirty) event.preventDefault();
+      if (dirty && !savedNavigation.current) event.preventDefault();
     };
     window.addEventListener("beforeunload", warn);
     return () => window.removeEventListener("beforeunload", warn);
@@ -73,6 +74,7 @@ export default function MatchResultEditor({result, players}: {
       });
       const payload = await response.json();
       if (!response.ok) throw new Error(response.status === 409 ? "다른 관리자가 먼저 수정했습니다. 입력한 내용은 유지되며, 원본을 다시 확인한 뒤 새로고침해 주세요." : payload.error ?? "경기 결과를 수정하지 못했습니다.");
+      savedNavigation.current = true;
       window.location.href = action === "publish"
         ? `/lol-statics/history?open=${encodeURIComponent((payload.result as MatchResult).matchResultId)}`
         : `/lol-statics/history/${encodeURIComponent((payload.result as MatchResult).matchResultId)}/edit`;
