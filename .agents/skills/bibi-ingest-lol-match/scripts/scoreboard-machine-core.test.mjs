@@ -16,7 +16,7 @@ import {
   selectUniqueAssetAssignments,
   validateMechanicalTotals,
 } from "./scoreboard-machine-core.mjs";
-import {applyBanOverlayModel, banCropLooksUnselected, extractBanOverlayModel, isAcceptedAssetMatch, isDecisiveBanOverlay, isObtainableInventoryItem, isScoreboardKeystone, participantAssetCoordinates, participantInventoryCoordinates} from "./resolve-ddragon-assets.mjs";
+import {applyBanOverlayModel, assetDifferenceHash, banCropLooksUnselected, extractBanOverlayModel, isAcceptedAssetMatch, isDecisiveBanOverlay, isObtainableInventoryItem, isScoreboardKeystone, participantAssetCoordinates, participantInventoryCoordinates} from "./resolve-ddragon-assets.mjs";
 
 describe("scoreboard machine parsing", () => {
   it("normalizes common OCR substitutions", () => {
@@ -44,6 +44,20 @@ describe("scoreboard machine parsing", () => {
     expect(isAcceptedAssetMatch({kind: "ban", methodAgreed: true, overlayAgreed: true, overlayDecisive: false})).toBe(false);
     expect(isAcceptedAssetMatch({kind: "item", methodAgreed: false, uniqueMatch: true, clearItem: false})).toBe(false);
     expect(isAcceptedAssetMatch({kind: "item", methodAgreed: false, uniqueMatch: true, clearItem: true})).toBe(true);
+  });
+
+  it("uses the same circular portrait area for champion hash matching", () => {
+    const clean = Buffer.alloc(32 * 32 * 3);
+    const framed = Buffer.from(clean);
+    for (let y = 0; y < 32; y += 1) for (let x = 0; x < 32; x += 1) {
+      if ((x - 15.5) ** 2 + (y - 15.5) ** 2 <= 145) continue;
+      const index = (y * 32 + x) * 3;
+      framed[index] = x % 2 ? 255 : 0;
+      framed[index + 1] = y % 2 ? 180 : 0;
+      framed[index + 2] = (x + y) % 2 ? 90 : 0;
+    }
+    expect(assetDifferenceHash(framed, "champion")).toBe(assetDifferenceHash(clean, "champion"));
+    expect(assetDifferenceHash(framed, "item")).not.toBe(assetDifferenceHash(clean, "item"));
   });
 
   it("matches Korean, English and OCR-confusable alt account names", () => {

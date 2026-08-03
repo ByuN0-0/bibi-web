@@ -199,11 +199,11 @@ async function compareCrop(buffer, crop, candidates, kind, field) {
   const targets = await normalizedCropTargets(sharp, normalizedScreen, crop, kind);
   const evaluated = [];
   for (const target of targets) {
-    const targetHash = differenceHash(target.normalized, 32, 32, 3);
+    const targetHash = assetDifferenceHash(target.normalized, kind);
     const scored = [];
     for (const candidate of candidates) {
       const icons = await cachedCandidateIcons(candidate, kind);
-      for (const icon of icons) scored.push({candidate, icon, hashDistance: hamming(targetHash, cachedIconHash(icon))});
+      for (const icon of icons) scored.push({candidate, icon, hashDistance: hamming(targetHash, cachedIconHash(icon, kind))});
     }
     const candidateLimit = kind === "quest" ? catalogs.quest.length : 5;
     const hashShortlist = scored.sort((a, b) => a.hashDistance - b.hashDistance).slice(0, kind === "ban" ? scored.length : 150);
@@ -313,7 +313,7 @@ async function compareBanOverlayCandidates(candidates, target, model) {
     for (const icon of icons) {
       const comparisonIcon = applyBanOverlayModel(icon, model);
       const pixelError = meanBanExtractedOverlayError(target, icon, comparisonIcon, model);
-      const hashDistance = hamming(targetHash, cachedIconHash(comparisonIcon));
+      const hashDistance = hamming(targetHash, cachedIconHash(comparisonIcon, "ban-overlay"));
       entries.push({candidate, icon, comparisonIcon, pixelError, hashDistance, matchScore: pixelError});
     }
   }
@@ -346,10 +346,10 @@ function cropQuality(pool, target) {
   return pool[0].matchScore - confidenceBonus + movementPenalty;
 }
 
-function cachedIconHash(icon) {
+function cachedIconHash(icon, kind) {
   let hash = iconHashCache.get(icon);
   if (hash === undefined) {
-    hash = differenceHash(icon, 32, 32, 3);
+    hash = assetDifferenceHash(icon, kind);
     iconHashCache.set(icon, hash);
   }
   return hash;
@@ -509,11 +509,28 @@ function scoreGap(candidates) { return candidates[1] ? candidates[1].matchScore 
 function acceptanceThreshold(kind) { return ["spell", "item", "trinket", "quest"].includes(kind) ? 260 : 480; }
 function acceptanceMargin(kind) { return ["spell", "item", "trinket", "quest"].includes(kind) ? 10 : 18; }
 
-function differenceHash(raw, width, height, channels) {
+export function assetDifferenceHash(raw, kind) {
+  return differenceHash(raw, 32, 32, 3, circularMaskRadiusSquared(kind));
+}
+
+function circularMaskRadiusSquared(kind) {
+  if (kind === "champion") return 145;
+  if (kind === "perk" || kind === "ban") return 210;
+  return null;
+}
+
+function differenceHash(raw, width, height, channels, maskRadiusSquared = null) {
   let hash = 0n;
   for (let y = 0; y < 8; y += 1) for (let x = 0; x < 8; x += 1) {
-    const left = luminance(raw, (Math.floor(y * height / 8) * width + Math.floor(x * width / 9)) * channels);
-    const right = luminance(raw, (Math.floor(y * height / 8) * width + Math.floor((x + 1) * width / 9)) * channels);
+    const sampleY = Math.floor(y * height / 8);
+    const leftX = Math.floor(x * width / 9);
+    const rightX = Math.floor((x + 1) * width / 9);
+    const sample = (sampleX) => maskRadiusSquared !== null
+      && (sampleX - (width - 1) / 2) ** 2 + (sampleY - (height - 1) / 2) ** 2 > maskRadiusSquared
+      ? 0
+      : luminance(raw, (sampleY * width + sampleX) * channels);
+    const left = sample(leftX);
+    const right = sample(rightX);
     hash = (hash << 1n) | (left > right ? 1n : 0n);
   }
   return hash;

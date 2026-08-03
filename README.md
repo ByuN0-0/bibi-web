@@ -35,9 +35,11 @@ Vercel Hobby의 함수 실행 제한에 맞춰 웹 갱신 함수는 최대 60초
 ### 내전 결과 스크린샷 수집
 
 표준 클라이언트 경기 종료 `점수판` 한 장을 프로젝트 스킬
-`.agents/skills/bibi-ingest-lol-match`로 구조화한 뒤
-`POST /api/internal/lol-match-results`로 전송합니다. 스크린샷 파일은 API나
-Oracle SODA에 저장하지 않습니다.
+`.agents/skills/bibi-ingest-lol-match`로 구조화한 뒤, 원본 이미지와 대조해
+닉네임 OCR 오류와 등록 선수 연결만 보정하고
+`POST /api/internal/lol-match-results`로 전송합니다. 숫자와 이미지 에셋은
+이 단계에서 임의 보정하지 않으며, 스크린샷 파일은 API나 Oracle SODA에
+저장하지 않습니다.
 
 - `Authorization: Bearer <BIBI_INGEST_TOKEN>` 헤더가 반드시 필요합니다.
 - `action: "validate"`는 저장 없이 스키마·선수 매핑·에셋을 확인합니다.
