@@ -2,7 +2,14 @@
 
 import {useEffect, useMemo, useRef, useState} from "react";
 import RankTierIcon from "@/app/lol-statics/components/RankTierIcon";
+import TeamBalancingGuide from "@/app/lol-statics/components/TeamBalancingGuide";
 import {copyText} from "@/lib/clipboard";
+import {
+  formatBalanceGap,
+  LOW_CONFIDENCE_DESCRIPTION,
+  OFF_ROLE_DESCRIPTION,
+  teamAssignmentWarning,
+} from "@/lib/lol/team-balance-guide";
 import type {PlayerParticipationMap} from "@/lib/lol/player-participation";
 import {
   RECENT_ROSTER_STORAGE_KEY,
@@ -30,6 +37,7 @@ export default function TeamBuilder({
   const [pending, setPending] = useState(false);
   const [error, setError] = useState("");
   const [mobileListCollapsed, setMobileListCollapsed] = useState(false);
+  const [guideOpen, setGuideOpen] = useState(false);
   const [copyStatus, setCopyStatus] = useState<"idle" | "copied" | "failed">("idle");
   const resultRef = useRef<HTMLDivElement>(null);
   const selectedSet = useMemo(() => new Set(selected), [selected]);
@@ -41,6 +49,9 @@ export default function TeamBuilder({
     () => selected.map((id) => playersById.get(id)).filter((player): player is PlayerProfile => Boolean(player)),
     [playersById, selected],
   );
+  const assignmentWarning = draft?.composition
+    ? teamAssignmentWarning([...draft.composition.blue, ...draft.composition.red])
+    : null;
 
   useEffect(() => {
     if (!publicMode) return;
@@ -64,6 +75,7 @@ export default function TeamBuilder({
     if (next === selected) return;
     setSelected(next);
     setDraft(null);
+    setGuideOpen(false);
     setError("");
     setRosterNotice("");
   }
@@ -71,6 +83,7 @@ export default function TeamBuilder({
   function clearSelection() {
     setSelected([]);
     setDraft(null);
+    setGuideOpen(false);
     setError("");
     setRosterNotice("");
     setMobileListCollapsed(false);
@@ -80,6 +93,7 @@ export default function TeamBuilder({
     if (!recentRoster) return;
     setSelected([...recentRoster]);
     setDraft(null);
+    setGuideOpen(false);
     setError("");
     setRosterNotice("최근 편성 10명을 불러왔습니다.");
     setMobileListCollapsed(false);
@@ -256,19 +270,27 @@ export default function TeamBuilder({
         ) : (
           <div>
             <div className="flex flex-wrap items-center justify-between gap-3">
-              <div className="flex items-center gap-2"><p className="text-xs text-[var(--muted)]">균형 등급</p><p className="text-2xl font-bold text-[var(--success)]">{draft.composition.balanceGrade}</p>{draft.status === "CONFIRMED" && <span className="rounded-full bg-[var(--success-soft)] px-2 py-1 text-[10px] font-bold text-[var(--success)]">확정됨</span>}</div>
+              <div className="flex flex-wrap items-center gap-2"><p className="text-xs text-[var(--muted)]">균형 등급</p><p className="text-2xl font-bold text-[var(--success)]">{draft.composition.balanceGrade}</p>{draft.status === "CONFIRMED" && <span className="rounded-full bg-[var(--success-soft)] px-2 py-1 text-[10px] font-bold text-[var(--success)]">확정됨</span>}<button type="button" aria-expanded={guideOpen} aria-controls="team-balancing-guide" onClick={() => setGuideOpen((open) => !open)} className="min-h-9 rounded-lg border border-[var(--hairline)] bg-white px-3 text-xs font-bold text-[var(--primary)] hover:bg-[var(--primary-soft)]">{guideOpen ? "편성 기준 닫기" : "편성 기준 보기"}</button></div>
               <div className="flex flex-wrap gap-2">
                 {publicMode && <button type="button" disabled={pending} onClick={() => void act("reroll")} className="min-h-10 rounded-lg border border-[var(--hairline)] bg-white px-3 text-xs font-bold hover:bg-[var(--surface-soft)]">{pending ? "계산 중…" : "다시 편성"}</button>}
                 <button type="button" onClick={() => void copyComposition()} className="min-h-10 rounded-lg border border-[var(--hairline)] bg-white px-3 text-xs font-bold hover:bg-[var(--surface-soft)]">{copyStatus === "copied" ? "복사 완료 ✓" : "텍스트 복사"}</button>
               </div>
             </div>
             {copyStatus === "failed" && <p role="alert" className="mt-2 rounded-lg bg-[var(--error-soft)] px-3 py-2 text-xs text-[var(--error)]">복사하지 못했습니다. 브라우저 권한을 확인하고 다시 시도해 주세요.</p>}
+            <div className="mt-3 rounded-xl border border-[var(--hairline-soft)] bg-white p-3">
+              <div className="flex flex-wrap gap-2">
+                <BalanceMetric label="전체 팀 차이" value={formatBalanceGap(draft.composition.teamGap)} />
+                <BalanceMetric label="최대 라인 차이" value={formatBalanceGap(draft.composition.maxLaneGap)} />
+              </div>
+              <p className="mt-2 text-[11px] leading-5 text-[var(--muted)]">승률이 아니라 팀 편성에 사용하는 내부 0~100 실력 점수의 차이예요. 낮을수록 두 팀이 비슷해요.</p>
+            </div>
+            {guideOpen && <TeamBalancingGuide id="team-balancing-guide" />}
             <div className="mt-3 grid gap-3 md:grid-cols-2">
               <Team title="블루 팀" color="blue" assignments={draft.composition.blue} />
               <Team title="레드 팀" color="red" assignments={draft.composition.red} />
             </div>
-            {([...draft.composition.blue, ...draft.composition.red].some((player) => player.offRole || player.lowConfidence)) && (
-              <div className="mt-4 rounded-xl border border-[#f2d28b] bg-[var(--warning-soft)] px-4 py-3 text-xs leading-5 text-[var(--warning)]">오프롤 또는 표본이 적은 포지션이 포함되어 있습니다. 선수별 표시를 확인하세요.</div>
+            {assignmentWarning && (
+              <div className="mt-4 rounded-xl border border-[#f2d28b] bg-[var(--warning-soft)] px-4 py-3 text-xs leading-5 text-[var(--warning)]">{assignmentWarning} 선수별 표시와 ‘편성 기준 보기’에서 기준을 확인할 수 있어요.</div>
             )}
           </div>
         )}
@@ -336,12 +358,16 @@ function Team({title, color, assignments}: {title: string; color: "blue" | "red"
         {assignments.map((player) => (
           <div key={player.role} className="flex h-16 items-center gap-2.5 rounded-lg border border-black/[0.05] bg-white px-2.5 py-2 text-[var(--ink)]">
             <RankTierIcon rank={player.rank} size={36} />
-            <div className="min-w-0 flex-1"><div className="flex items-center justify-between gap-2"><span className="text-[11px] font-bold text-[var(--muted)]">{ROLE_LABEL[player.role]}</span><span className="truncate text-[10px] text-[var(--muted)]">{player.rankQueue === "SOLO" ? "솔랭" : player.rankQueue === "FLEX" ? "자랭" : "랭크"} · {player.rank}</span></div><div className="mt-0.5 flex min-w-0 items-center gap-1"><p className="min-w-0 flex-1 truncate text-sm font-semibold">{player.displayName}</p>{player.offRole && <span className="shrink-0 rounded bg-[var(--warning-soft)] px-1.5 py-0.5 text-[9px] font-bold text-[var(--warning)]">오프롤</span>}{player.lowConfidence && <span className="shrink-0 rounded bg-[var(--warning-soft)] px-1.5 py-0.5 text-[9px] font-bold text-[var(--warning)]">낮은 신뢰도</span>}</div></div>
+            <div className="min-w-0 flex-1"><div className="flex items-center justify-between gap-2"><span className="text-[11px] font-bold text-[var(--muted)]">{ROLE_LABEL[player.role]}</span><span className="truncate text-[10px] text-[var(--muted)]">{player.rankQueue === "SOLO" ? "솔랭" : player.rankQueue === "FLEX" ? "자랭" : "랭크"} · {player.rank}</span></div><div className="mt-0.5 flex min-w-0 items-center gap-1"><p className="min-w-0 flex-1 truncate text-sm font-semibold">{player.displayName}</p>{player.offRole && <span title={OFF_ROLE_DESCRIPTION} className="shrink-0 rounded bg-[var(--warning-soft)] px-1.5 py-0.5 text-[9px] font-bold text-[var(--warning)]">오프롤</span>}{player.lowConfidence && <span title={LOW_CONFIDENCE_DESCRIPTION} className="shrink-0 rounded bg-[var(--warning-soft)] px-1.5 py-0.5 text-[9px] font-bold text-[var(--warning)]">낮은 신뢰도</span>}</div></div>
           </div>
         ))}
       </div>
     </div>
   );
+}
+
+function BalanceMetric({label, value}: {label: string; value: string}) {
+  return <div className="flex min-w-[140px] flex-1 items-center justify-between gap-3 rounded-lg bg-[var(--surface-soft)] px-3 py-2"><span className="text-xs text-[var(--muted)]">{label}</span><strong className="text-sm">{value}</strong></div>;
 }
 
 function syncStatusLabel(status: PlayerProfile["syncStatus"]) {
