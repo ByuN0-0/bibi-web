@@ -1,6 +1,7 @@
 import type {Metadata} from "next";
 import Link from "next/link";
 import React from "react";
+import MathFormula from "@/app/components/MathFormula";
 import {
   BALANCE_FORMULA_ITEMS,
   BALANCE_GRADE_RULES,
@@ -30,6 +31,12 @@ const roleWeights = [
   ["미드", "피해 효율 45% · 킬 관여 30%", "안정성 15% · 시야 10%"],
   ["원딜", "피해 효율 55% · 킬 관여 20%", "CS 15% · 안정성 10%"],
   ["서폿", "시야 35% · 킬 관여 30%", "CC 20% · 안정성 15%"],
+] as const;
+
+const gradeFormulae = [
+  String.raw`G \le 0.03,\quad M \le 0.10`,
+  String.raw`G \le 0.06,\quad M \le 0.18`,
+  String.raw`\text{otherwise}`,
 ] as const;
 
 export default function TeamBalancePage() {
@@ -78,6 +85,22 @@ export default function TeamBalancePage() {
         </nav>
       </div>
 
+      <aside className="page-shell pt-10" aria-labelledby="notation-title">
+        <div className="rounded-2xl border border-[var(--hairline-soft)] bg-[var(--surface-soft)] p-5 sm:p-6">
+          <div className="flex flex-col gap-4 lg:flex-row lg:items-center lg:justify-between">
+            <div><p id="notation-title" className="text-sm font-bold">기호 먼저 보기</p><p className="mt-1 text-xs leading-5 text-[var(--muted)]">아래 식에서 같은 기호는 항상 같은 뜻으로 사용합니다.</p></div>
+            <dl className="grid flex-1 grid-cols-2 gap-2 text-xs sm:grid-cols-3 lg:max-w-3xl lg:grid-cols-6">
+              <Notation symbol={<>i</>} meaning="선수" />
+              <Notation symbol={<>r</>} meaning="포지션" />
+              <Notation symbol={<>j</>} meaning="경기" />
+              <Notation symbol={<>B, R</>} meaning="블루·레드" />
+              <Notation symbol={<>∑</>} meaning="전체 합" />
+              <Notation symbol={<>clip</>} meaning="범위 제한" />
+            </dl>
+          </div>
+        </div>
+      </aside>
+
       <section className="page-shell py-16 sm:py-20" id="individual-score">
         <SectionIntro eyebrow="01 · Individual score" title="랭크를 그대로 믿지 않고, 표본만큼 믿습니다">
           솔랭과 자랭을 0~1 값으로 바꾸고 경기 수가 적을수록 기준점으로 당깁니다. 수학적으로는 사전 표본을 더한 축소 추정에 가깝습니다.
@@ -87,7 +110,8 @@ export default function TeamBalancePage() {
           <article className="surface-card overflow-hidden">
             <div className="border-b border-[var(--hairline-soft)] bg-[var(--surface-soft)] p-5 sm:p-6">
               <p className="text-sm font-bold">① 티어를 연속값으로 변환</p>
-              <Formula className="mt-4">R = (티어값 + 디비전값 + LP) ÷ 4,000</Formula>
+              <Formula className="mt-4 text-base" latex={String.raw`R=\operatorname{clip}\!\left(\frac{b_t+d+\ell}{4000},\,0,\,1\right)`} />
+              <p className="mt-3 text-xs leading-5 text-[var(--muted)]"><span className="font-mono">b<sub>t</sub></span>는 티어 기준값, <span className="font-mono">d</span>는 디비전값, <span className="font-mono">ℓ</span>은 LP입니다.</p>
               <p className="mt-3 text-xs leading-5 text-[var(--muted)]">디비전은 IV 0 · III 100 · II 200 · I 300을 더합니다.</p>
             </div>
             <div className="grid grid-cols-2 gap-x-5 gap-y-2 p-5 text-xs sm:grid-cols-3 sm:p-6">
@@ -97,9 +121,7 @@ export default function TeamBalancePage() {
 
           <article className="surface-card p-5 sm:p-7">
             <p className="text-sm font-bold">② 판수가 적으면 기준점으로 축소</p>
-            <Formula className="mt-4 text-center text-[15px] sm:text-lg">
-              T = [10×0.35 + n<sub>s</sub>R<sub>s</sub> + n<sub>f</sub>R<sub>f</sub>] ÷ [10 + n<sub>s</sub> + n<sub>f</sub>]
-            </Formula>
+            <Formula className="mt-4 text-[15px] sm:text-lg" latex={String.raw`T_i=\frac{10(0.35)+n_sR_s+n_fR_f}{10+n_s+n_f}`} />
             <div className="mt-5 grid gap-3 sm:grid-cols-3">
               <MiniStat label="가상 사전 표본" value="10판" detail="기준점 35점" />
               <MiniStat label="솔랭 증거" value="최대 40판" detail="판당 가중치 1.0" />
@@ -127,18 +149,19 @@ export default function TeamBalancePage() {
           <div className="mt-5 grid gap-5 lg:grid-cols-2">
             <article className="surface-card p-5 sm:p-7">
               <h3 className="font-bold">시간·게임 모드 가중치</h3>
-              <Formula className="mt-4 text-center">w = 0.5<sup>경과일÷14</sup> × 큐 가중치</Formula>
+              <Formula className="mt-4 text-base" latex={String.raw`w_j=2^{-a_j/14}\,q_j`} />
               <div className="mt-5 grid grid-cols-3 gap-2 text-center text-xs">
                 <WeightChip title="솔로랭크" value="1.00" />
                 <WeightChip title="자유랭크" value="0.35" />
                 <WeightChip title="일반게임" value="0.15" />
               </div>
-              <p className="mt-4 text-xs leading-5 text-[var(--muted)]">오늘 경기는 1, 14일 전은 0.5, 28일 전은 0.25가 됩니다.</p>
+              <p className="mt-4 text-xs leading-5 text-[var(--muted)]"><span className="font-mono">a<sub>j</sub></span>는 경과일, <span className="font-mono">q<sub>j</sub></span>는 큐 가중치입니다. 오늘 경기는 1, 14일 전은 0.5, 28일 전은 0.25가 됩니다.</p>
+              <Formula className="mt-3" latex={String.raw`\bar{x}=\frac{\sum_j w_jx_j}{\sum_j w_j}`} />
             </article>
 
             <article className="surface-card p-5 sm:p-7">
               <h3 className="font-bold">표본 신뢰도</h3>
-              <Formula className="mt-4 text-center">C = 유효 표본 W ÷ (W + 5)</Formula>
+              <Formula className="mt-4 text-base" latex={String.raw`W=\sum_jw_j,\qquad C_{i,r}=\frac{W}{W+5}`} />
               <div className="mt-5 space-y-3 text-xs">
                 <ConfidenceRow label="최근 솔랭 2판" width="28.6%" value="28.6%" />
                 <ConfidenceRow label="최근 솔랭 8판" width="61.5%" value="61.5%" />
@@ -148,7 +171,7 @@ export default function TeamBalancePage() {
           </div>
 
           <article className="mt-5 overflow-hidden rounded-2xl border border-[var(--hairline-soft)] bg-white">
-            <div className="border-b border-[var(--hairline-soft)] p-5 sm:p-6"><h3 className="font-bold">포지션마다 중요하게 보는 후반 지표가 달라요</h3><p className="mt-2 text-sm text-[var(--muted)]">모든 차이는 tanh 함수로 -1~1 사이에 압축해 한 지표가 지나치게 지배하지 않게 합니다.</p></div>
+            <div className="border-b border-[var(--hairline-soft)] p-5 sm:p-6"><h3 className="font-bold">포지션마다 중요하게 보는 후반 지표가 달라요</h3><p className="mt-2 text-sm leading-6 text-[var(--muted)]">모든 차이는 <InlineMath latex={String.raw`N(x;a)=\tanh(x/a)\in(-1,1)`} />로 압축해 한 지표가 지나치게 지배하지 않게 합니다.</p></div>
             <div className="divide-y divide-[var(--hairline-soft)]">
               {roleWeights.map(([role, lead, rest]) => <div key={role} className="grid gap-1 px-5 py-4 text-sm sm:grid-cols-[80px_1fr_1fr] sm:gap-5 sm:px-6"><strong className="text-[var(--primary)]">{role}</strong><span>{lead}</span><span className="text-[var(--muted)]">{rest}</span></div>)}
             </div>
@@ -157,7 +180,7 @@ export default function TeamBalancePage() {
           <div className="mt-5 rounded-2xl bg-[var(--ink)] p-6 text-white sm:p-8">
             <p className="text-xs font-bold uppercase tracking-[0.12em] text-[#ff9db3]">Role performance signal</p>
             <div className="mt-4 grid gap-5 lg:grid-cols-[1fr_auto] lg:items-center">
-              <Formula dark className="text-center text-[15px] sm:text-xl">포지션 점수 P = T + 0.30 × C × (폼 점수 F − 0.5)</Formula>
+              <Formula dark className="text-[15px] sm:text-xl" latex={String.raw`P_{i,r}=\operatorname{clip}\!\left(T_i+0.30C_{i,r}(F_{i,r}-0.5),\,0,\,1\right)`} />
               <p className="max-w-md text-sm leading-6 text-[#c9c9c9]">표본이 없으면 랭크 점수 그대로입니다. 표본이 충분해도 최근 폼 보정은 최대 ±15점으로 제한됩니다.</p>
             </div>
           </div>
@@ -170,14 +193,14 @@ export default function TeamBalancePage() {
         </SectionIntro>
 
         <div className="mt-9 grid gap-5 lg:grid-cols-3">
-          <ExplainerCard number="1" title="유효 Elo" formula={<>E* = 0.3 × 전체 Elo<br />+ 0.7 × 포지션 Elo</>} detail="전체와 포지션 Elo는 모두 1,500에서 시작합니다." />
-          <ExplainerCard number="2" title="승리 기대값" formula={<>p = 1 ÷ (1 + 10<sup>(상대−우리)÷400</sup>)</>} detail="예상 밖의 승리일수록 Elo가 더 크게 움직입니다." />
-          <ExplainerCard number="3" title="경기 후 변화" formula={<>Δ = 32 × (실제 결과 − p)</>} detail="동률 팀끼리 경기하면 승자 +16, 패자 −16입니다." />
+          <ExplainerCard number="1" title="유효 Elo" formula={String.raw`E^{\ast}_{i,r}=0.3E_i+0.7E_{i,r}`} detail="전체와 포지션 Elo는 모두 1,500에서 시작합니다." />
+          <ExplainerCard number="2" title="블루 팀 승리 기대값" formula={String.raw`p_B=\frac{1}{1+10^{(\bar E_R-\bar E_B)/400}}`} detail="Ē는 팀원 5명의 유효 Elo 평균입니다. 예상 밖의 승리일수록 Elo가 더 크게 움직입니다." />
+          <ExplainerCard number="3" title="경기 후 변화" formula={String.raw`\Delta=32(y_B-p_B)`} detail="y는 실제 승패를 나타내는 0 또는 1입니다. 동률 팀끼리 경기하면 승자 +16, 패자 −16입니다." />
         </div>
 
         <div className="mt-5 grid gap-5 rounded-2xl border border-[var(--hairline-soft)] bg-[var(--surface-soft)] p-5 sm:p-7 lg:grid-cols-[1fr_1.15fr] lg:items-center">
           <div><p className="text-sm font-bold">내전 Elo의 최종 반영 비율</p><p className="mt-2 text-sm leading-6 text-[var(--muted)]">유효 내전 표본 10판까지 비중이 커지고, 이후에는 최대 30%로 고정됩니다.</p></div>
-          <Formula className="text-center text-sm sm:text-base">최종 S = (1 − α) × 최근 전적 P + α × 내전 Elo 신호, &nbsp; 0 ≤ α ≤ 0.30</Formula>
+          <Formula className="text-sm sm:text-base" latex={String.raw`\begin{aligned}H_{i,r}&=\operatorname{clip}\!\left(0.5+\frac{E^{\ast}_{i,r}-1500}{800},0,1\right)\\[2pt]S_{i,r}&=(1-\alpha_{i,r})P_{i,r}+\alpha_{i,r}H_{i,r},\qquad 0\le\alpha_{i,r}\le0.30\end{aligned}`} />
         </div>
       </section>
 
@@ -195,19 +218,26 @@ export default function TeamBalancePage() {
 
           <div className="mt-5 rounded-2xl border border-white/15 bg-white/[0.06] p-5 sm:p-8">
             <div className="grid gap-7 lg:grid-cols-[0.8fr_1.2fr] lg:items-center">
-              <div><p className="text-xs font-bold uppercase tracking-[0.12em] text-[#ff9db3]">Objective function</p><h3 className="mt-2 text-2xl font-bold">불균형 비용 J</h3><p className="mt-3 text-sm leading-6 text-[#bdbdbd]">값이 0에 가까울수록 좋은 조합입니다. 오프롤 최소 인원 조건을 먼저 만족한 후보끼리 이 비용을 비교합니다.</p></div>
+              <div><p className="text-xs font-bold uppercase tracking-[0.12em] text-[#ff9db3]">Objective function</p><h3 className="mt-2 text-2xl font-bold">불균형 비용 J</h3><p className="mt-3 text-sm leading-6 text-[#bdbdbd]">값이 0에 가까울수록 좋은 조합입니다. 오프롤 최소 인원 조건을 먼저 만족한 후보끼리 이 비용을 비교합니다.</p><Formula dark className="mt-4" latex={String.raw`J=0.35G+0.30L+0.15M+0.15P+0.05R`} /></div>
               <div className="grid gap-2 sm:grid-cols-2">
                 {BALANCE_FORMULA_ITEMS.map((item) => <div key={item.label} className="flex items-center gap-3 rounded-xl bg-white/[0.07] px-4 py-3"><span className="min-w-12 rounded-lg bg-[#ffecf1] px-2 py-1 text-center text-xs font-bold text-[var(--primary)]">{Math.round(item.weight * 100)}%</span><span className="text-sm">{item.label}</span></div>)}
               </div>
             </div>
+            <div className="mt-6 grid gap-2 border-t border-white/10 pt-6 text-xs sm:grid-cols-2 lg:grid-cols-5">
+              <MathDefinition symbol="G" latex={String.raw`\frac{|\sum_r S_{B,r}-\sum_r S_{R,r}|}{5}`} />
+              <MathDefinition symbol="L" latex={String.raw`\frac{\sum_r|S_{B,r}-S_{R,r}|}{5}`} />
+              <MathDefinition symbol="M" latex={String.raw`\max_r|S_{B,r}-S_{R,r}|`} />
+              <MathDefinition symbol="P" label="평균 포지션 페널티" />
+              <MathDefinition symbol="R" label="같은 팀 반복도" />
+            </div>
           </div>
 
           <div className="mt-5 grid gap-4 md:grid-cols-3">
-            {BALANCE_GRADE_RULES.map((rule, index) => <article key={rule.grade} className="rounded-2xl border border-white/15 bg-white/[0.04] p-5"><div className={`h-1.5 w-12 rounded-full ${index === 0 ? "bg-[#63d6a5]" : index === 1 ? "bg-[#ffd475]" : "bg-[#a8a8a8]"}`} /><h3 className="mt-5 text-lg font-bold">{rule.grade}</h3><p className="mt-2 text-sm leading-6 text-[#bdbdbd]">{rule.rule}</p></article>)}
+            {BALANCE_GRADE_RULES.map((rule, index) => <article key={rule.grade} className="rounded-2xl border border-white/15 bg-white/[0.04] p-5"><div className={`h-1.5 w-12 rounded-full ${index === 0 ? "bg-[#63d6a5]" : index === 1 ? "bg-[#ffd475]" : "bg-[#a8a8a8]"}`} /><h3 className="mt-5 text-lg font-bold">{rule.grade}</h3><div className="mt-3 overflow-x-auto text-sm text-white"><MathFormula latex={gradeFormulae[index]} /></div><p className="mt-2 text-sm leading-6 text-[#bdbdbd]">{rule.rule}</p></article>)}
           </div>
 
           <p className="mt-5 rounded-xl border border-white/10 bg-white/[0.04] px-5 py-4 text-sm leading-6 text-[#c9c9c9]">
-            다시 편성할 때는 이미 보여 준 5:5 분할을 제외합니다. 최적 후보만 고정하지 않고 <span className="font-mono text-white">exp(−비용 차이 ÷ 0.03)</span>에 비례해 선택하므로, 균형을 유지하면서도 결과가 다양해집니다.
+            다시 편성할 때는 이미 보여 준 5:5 분할을 제외합니다. 최적 후보만 고정하지 않고 <InlineMath dark latex={String.raw`\Pr(k)\propto e^{-(J_k-J_{\min})/0.03}`} />으로 선택하므로, 균형을 유지하면서도 결과가 다양해집니다.
           </p>
         </div>
       </section>
@@ -236,12 +266,20 @@ function Anchor({href, children}: {href: string; children: React.ReactNode}) {
   return <a href={href} className="shrink-0 rounded-full px-4 py-2 text-[var(--muted)] hover:bg-[var(--surface-soft)] hover:text-[var(--ink)]">{children}</a>;
 }
 
+function Notation({symbol, meaning}: {symbol: React.ReactNode; meaning: string}) {
+  return <div className="rounded-lg bg-white px-3 py-2"><dt className="font-mono text-sm font-bold text-[var(--primary)]">{symbol}</dt><dd className="mt-0.5 text-[var(--muted)]">{meaning}</dd></div>;
+}
+
 function SectionIntro({eyebrow, title, children, dark = false}: {eyebrow: string; title: string; children: React.ReactNode; dark?: boolean}) {
   return <div className="max-w-3xl"><p className={`text-xs font-bold uppercase tracking-[0.12em] ${dark ? "text-[#ff9db3]" : "text-[var(--primary)]"}`}>{eyebrow}</p><h2 className="mt-3 text-3xl font-bold leading-tight tracking-[-0.035em] sm:text-4xl">{title}</h2><p className={`mt-4 break-keep text-base leading-7 ${dark ? "text-[#bdbdbd]" : "text-[var(--muted)]"}`}>{children}</p></div>;
 }
 
-function Formula({children, className = "", dark = false}: {children: React.ReactNode; className?: string; dark?: boolean}) {
-  return <div className={`overflow-x-auto rounded-xl border px-4 py-4 font-mono text-sm leading-7 ${dark ? "border-white/15 bg-white/[0.06] text-white" : "border-[#f0ccd5] bg-[var(--primary-soft)] text-[var(--ink)]"} ${className}`}>{children}</div>;
+function Formula({latex, className = "", dark = false}: {latex: string; className?: string; dark?: boolean}) {
+  return <div className={`overflow-x-auto rounded-xl border px-4 py-4 text-center text-sm leading-7 ${dark ? "border-white/15 bg-white/[0.06] text-white" : "border-[#f0ccd5] bg-[var(--primary-soft)] text-[var(--ink)]"} ${className}`}><MathFormula latex={latex} display /></div>;
+}
+
+function InlineMath({latex, dark = false}: {latex: string; dark?: boolean}) {
+  return <MathFormula latex={latex} className={`mx-1 whitespace-nowrap ${dark ? "text-white" : "text-[var(--ink)]"}`} />;
 }
 
 function MiniStat({label, value, detail}: {label: string; value: string; detail: string}) {
@@ -256,12 +294,16 @@ function ConfidenceRow({label, value, width}: {label: string; value: string; wid
   return <div><div className="mb-1.5 flex justify-between"><span>{label}</span><strong>{value}</strong></div><div className="h-2 overflow-hidden rounded-full bg-[var(--surface-strong)]"><div className="h-full rounded-full bg-[var(--primary)]" style={{width}} /></div></div>;
 }
 
-function ExplainerCard({number, title, formula, detail}: {number: string; title: string; formula: React.ReactNode; detail: string}) {
-  return <article className="surface-card p-5 sm:p-6"><span className="grid h-8 w-8 place-items-center rounded-full bg-[var(--primary)] text-xs font-bold text-white">{number}</span><h3 className="mt-5 font-bold">{title}</h3><Formula className="mt-3 min-h-[86px] text-center">{formula}</Formula><p className="mt-3 text-xs leading-5 text-[var(--muted)]">{detail}</p></article>;
+function ExplainerCard({number, title, formula, detail}: {number: string; title: string; formula: string; detail: string}) {
+  return <article className="surface-card p-5 sm:p-6"><span className="grid h-8 w-8 place-items-center rounded-full bg-[var(--primary)] text-xs font-bold text-white">{number}</span><h3 className="mt-5 font-bold">{title}</h3><Formula latex={formula} className="mt-3 min-h-[86px]" /><p className="mt-3 text-xs leading-5 text-[var(--muted)]">{detail}</p></article>;
 }
 
 function DarkStep({number, title, children}: {number: string; title: string; children: React.ReactNode}) {
   return <article className="rounded-2xl border border-white/15 bg-white/[0.06] p-5"><span className="text-xs font-bold text-[#ff9db3]">STEP {number}</span><h3 className="mt-3 text-lg font-bold">{title}</h3><p className="mt-2 text-sm leading-6 text-[#bdbdbd]">{children}</p></article>;
+}
+
+function MathDefinition({symbol, latex, label}: {symbol: string; latex?: string; label?: string}) {
+  return <div className="rounded-lg bg-white/[0.05] p-3"><p className="font-mono text-base font-bold text-[#ff9db3]">{symbol}</p><div className="mt-1 overflow-x-auto whitespace-nowrap text-xs text-[#c9c9c9]">{latex ? <MathFormula latex={latex} /> : label}</div></div>;
 }
 
 function ListItem({children}: {children: React.ReactNode}) {

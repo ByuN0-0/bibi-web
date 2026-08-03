@@ -13,6 +13,7 @@
   "dependencies": {
     "@tesseract.js-data/eng": "^1.0.0",
     "@tesseract.js-data/kor": "^1.0.0",
+    "katex": "^0.18.1",
     "next": "15.2.8",
     "react": "^19.0.0",
     "react-dom": "^19.0.0",
