@@ -34,3 +34,17 @@ export function comparisonShare(left: number, right: number): number {
   if (total <= 0) return 50;
   return Math.max(0, Math.min(100, (left / total) * 100));
 }
+
+export function playerNameKey(name: string): string {
+  return name.normalize("NFC").trim().replace(/\s+/g, " ").toLocaleLowerCase("ko-KR");
+}
+
+export function formatKdaRatio(kills: number, deaths: number, assists: number): string {
+  if (deaths === 0) return "Perfect";
+  return `${((kills + assists) / deaths).toFixed(2)}:1`;
+}
+
+export function formatCsPerMinute(cs: number, durationSeconds: number): string {
+  if (durationSeconds <= 0) return "0.0";
+  return (cs / (durationSeconds / 60)).toFixed(1);
+}

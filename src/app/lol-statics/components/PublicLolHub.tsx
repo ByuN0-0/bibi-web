@@ -70,6 +70,7 @@ export default function PublicLolHub({players, playerParticipation, playerLoadFa
       <div role="tabpanel" aria-label="내전 기록" hidden={tab !== "history"}>
         <PublicMatchHistory
           results={results}
+          players={players}
           loading={historyLoading || (!historyLoaded && !historyError)}
           error={historyError}
           hasMore={historyLoaded && nextOffset !== null}

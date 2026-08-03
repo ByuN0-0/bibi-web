@@ -1,6 +1,7 @@
 import LolIcon from "@/app/components/LolIcon";
 import {LolPositionIcon} from "@/app/components/LolGameUiIcon";
-import {comparisonShare, sortParticipantsByRole} from "@/lib/lol/match-history-view";
+import RankTierIcon from "@/app/lol-statics/components/RankTierIcon";
+import {comparisonShare, formatCsPerMinute, formatKdaRatio, playerNameKey, sortParticipantsByRole} from "@/lib/lol/match-history-view";
 import type {MatchObjectives, MatchResult, MatchResultParticipant, MatchResultTeamStats, MatchTeam, PublicMatchResult, PublicMatchResultParticipant} from "@/lib/lol/types";
 
 const OBJECTIVES: Array<[keyof MatchObjectives, string]> = [
@@ -13,10 +14,12 @@ const OBJECTIVES: Array<[keyof MatchObjectives, string]> = [
 ];
 
 type ScoreboardParticipant = MatchResultParticipant | PublicMatchResultParticipant;
+export type MatchPlayerRankMap = Record<string, {rank: string; queue: "솔랭" | "자랭" | "랭크"}>;
 
-export default function LolMatchScoreboard({result, compact = false}: {
+export default function LolMatchScoreboard({result, compact = false, playerRanks}: {
   result: MatchResult | PublicMatchResult;
   compact?: boolean;
+  playerRanks?: MatchPlayerRankMap;
 }) {
   const blueStats = result.teamStats.find((stats) => stats.team === "BLUE")!;
   const redStats = result.teamStats.find((stats) => stats.team === "RED")!;
@@ -25,20 +28,22 @@ export default function LolMatchScoreboard({result, compact = false}: {
 
   return (
     <div className={`overflow-hidden border border-[var(--hairline)] bg-white ${compact ? "rounded-xl" : "rounded-2xl"}`}>
-      <TeamScoreboard team="BLUE" winner={result.winner === "BLUE"} version={result.ddragonVersion} stats={blueStats} participants={blueParticipants} compact={compact} />
+      <TeamScoreboard team="BLUE" winner={result.winner === "BLUE"} version={result.ddragonVersion} durationSeconds={result.durationSeconds} stats={blueStats} participants={blueParticipants} compact={compact} playerRanks={playerRanks} />
       <TeamComparison blue={blueStats} red={redStats} compact={compact} />
-      <TeamScoreboard team="RED" winner={result.winner === "RED"} version={result.ddragonVersion} stats={redStats} participants={redParticipants} compact={compact} />
+      <TeamScoreboard team="RED" winner={result.winner === "RED"} version={result.ddragonVersion} durationSeconds={result.durationSeconds} stats={redStats} participants={redParticipants} compact={compact} playerRanks={playerRanks} />
     </div>
   );
 }
 
-function TeamScoreboard({team, winner, version, stats, participants, compact}: {
+function TeamScoreboard({team, winner, version, durationSeconds, stats, participants, compact, playerRanks}: {
   team: MatchTeam;
   winner: boolean;
   version: string;
+  durationSeconds: number;
   stats: MatchResultTeamStats;
   participants: ScoreboardParticipant[];
   compact: boolean;
+  playerRanks?: MatchPlayerRankMap;
 }) {
   const blue = team === "BLUE";
   return (
@@ -62,11 +67,11 @@ function TeamScoreboard({team, winner, version, stats, participants, compact}: {
           <thead className="bg-[var(--surface-soft)] text-left text-[10px] font-semibold uppercase tracking-wide text-[var(--muted)]">
             <tr><th className="px-3 py-2">선수</th><th className="px-3 py-2">룬·주문</th><th className="px-3 py-2 text-center">K/D/A</th><th className="px-3 py-2 text-right">CS</th><th className="px-3 py-2 text-right">골드</th><th className="px-3 py-2">아이템</th></tr>
           </thead>
-          <tbody>{participants.map((participant, index) => <DesktopPlayerRow key={`${participant.role}-${participant.observedName}-${index}`} participant={participant} version={version} compact={compact} />)}</tbody>
+          <tbody>{participants.map((participant, index) => <DesktopPlayerRow key={`${participant.role}-${participant.observedName}-${index}`} participant={participant} version={version} durationSeconds={durationSeconds} compact={compact} playerRank={playerRanks?.[playerNameKey(participant.observedName)]} />)}</tbody>
         </table>
       </div>
       <div className="divide-y divide-[var(--hairline-soft)] md:hidden">
-        {participants.map((participant, index) => <MobilePlayerCard key={`${participant.role}-${participant.observedName}-${index}`} participant={participant} version={version} compact={compact} />)}
+        {participants.map((participant, index) => <MobilePlayerCard key={`${participant.role}-${participant.observedName}-${index}`} participant={participant} version={version} durationSeconds={durationSeconds} compact={compact} playerRank={playerRanks?.[playerNameKey(participant.observedName)]} />)}
       </div>
     </section>
   );
@@ -113,27 +118,36 @@ function ComparisonBar({label, blue, red, formatValue = (value) => value.toLocal
   );
 }
 
-function DesktopPlayerRow({participant, version, compact}: {participant: ScoreboardParticipant; version: string; compact: boolean}) {
+function DesktopPlayerRow({participant, version, durationSeconds, compact, playerRank}: {participant: ScoreboardParticipant; version: string; durationSeconds: number; compact: boolean; playerRank?: MatchPlayerRankMap[string]}) {
   const iconSize = compact ? 32 : 38;
   return (
     <tr className="border-t border-[var(--hairline-soft)] bg-white hover:bg-[var(--surface-soft)]">
-      <td className={compact ? "px-3 py-1.5" : "px-3 py-2.5"}><div className="flex items-center gap-2.5"><LolIcon asset={participant.champion} version={version} size={iconSize} /><div className="min-w-0"><p className="flex max-w-52 items-center gap-1.5 font-semibold"><LolPositionIcon role={participant.role} size={compact ? 14 : 16} /><span className="truncate" title={participant.observedName}>{participant.observedName}</span></p><p className="mt-0.5 text-[10px] text-[var(--muted)]">Lv.{participant.level} · {participant.champion.name}{participant.guest ? " · 게스트" : ""}</p></div></div></td>
+      <td className={compact ? "px-3 py-1.5" : "px-3 py-2.5"}><div className="flex items-center gap-2.5"><LolIcon asset={participant.champion} version={version} size={iconSize} /><div className="min-w-0"><p className="flex max-w-52 items-center gap-1.5 font-semibold"><LolPositionIcon role={participant.role} size={compact ? 14 : 16} /><span className="truncate" title={participant.observedName}>{participant.observedName}</span></p><PlayerMeta participant={participant} playerRank={playerRank} /></div></div></td>
       <td className={compact ? "px-3 py-1.5" : "px-3 py-2.5"}><div className="flex gap-1"><LolIcon asset={participant.primaryPerk} version={version} size={compact ? 24 : 28} />{participant.summonerSpells.map((spell, index) => <LolIcon key={index} asset={spell} version={version} size={compact ? 24 : 28} />)}</div></td>
-      <td className={`${compact ? "px-2 py-1.5" : "px-3 py-2.5"} text-center font-bold tabular-nums`}>{participant.kills} / {participant.deaths} / {participant.assists}</td>
-      <td className={`${compact ? "px-2 py-1.5" : "px-3 py-2.5"} text-right tabular-nums`}>{participant.cs}</td>
+      <td className={`${compact ? "px-2 py-1.5" : "px-3 py-2.5"} text-center tabular-nums`}><p className="font-bold">{participant.kills} / {participant.deaths} / {participant.assists}</p><p className="mt-0.5 text-[9px] text-[var(--muted)]">{formatKdaRatio(participant.kills, participant.deaths, participant.assists)} KDA</p></td>
+      <td className={`${compact ? "px-2 py-1.5" : "px-3 py-2.5"} text-right tabular-nums`}><p>{participant.cs}</p><p className="mt-0.5 text-[9px] text-[var(--muted)]">{formatCsPerMinute(participant.cs, durationSeconds)}/분</p></td>
       <td className={`${compact ? "px-2 py-1.5" : "px-3 py-2.5"} text-right tabular-nums`}>{participant.goldEarned.toLocaleString()}</td>
       <td className={compact ? "px-3 py-1.5" : "px-3 py-2.5"}><Inventory participant={participant} version={version} size={compact ? 24 : 28} /></td>
     </tr>
   );
 }
 
-function MobilePlayerCard({participant, version, compact}: {participant: ScoreboardParticipant; version: string; compact: boolean}) {
+function MobilePlayerCard({participant, version, durationSeconds, compact, playerRank}: {participant: ScoreboardParticipant; version: string; durationSeconds: number; compact: boolean; playerRank?: MatchPlayerRankMap[string]}) {
   return (
     <article className={`bg-white ${compact ? "p-2.5" : "p-4"}`}>
-      <div className="flex items-start justify-between gap-3"><div className="flex min-w-0 items-center gap-2.5"><LolIcon asset={participant.champion} version={version} size={compact ? 34 : 42} /><div className="min-w-0"><p className="flex items-center gap-1.5 text-sm font-semibold"><LolPositionIcon role={participant.role} size={compact ? 14 : 16} /><span className="truncate" title={participant.observedName}>{participant.observedName}</span></p><p className="text-[10px] text-[var(--muted)]">Lv.{participant.level} · {participant.champion.name}{participant.guest ? " · 게스트" : ""}</p></div></div><p className="shrink-0 text-sm font-bold tabular-nums">{participant.kills}/{participant.deaths}/{participant.assists}</p></div>
-      <div className={`${compact ? "mt-2" : "mt-3"} flex flex-wrap items-center justify-between gap-2`}><div className="flex gap-1"><LolIcon asset={participant.primaryPerk} version={version} size={compact ? 22 : 26} />{participant.summonerSpells.map((spell, index) => <LolIcon key={index} asset={spell} version={version} size={compact ? 22 : 26} />)}</div><p className="text-xs text-[var(--muted)]">CS {participant.cs} · {participant.goldEarned.toLocaleString()} G</p></div>
+      <div className="flex items-start justify-between gap-3"><div className="flex min-w-0 items-center gap-2.5"><LolIcon asset={participant.champion} version={version} size={compact ? 34 : 42} /><div className="min-w-0"><p className="flex items-center gap-1.5 text-sm font-semibold"><LolPositionIcon role={participant.role} size={compact ? 14 : 16} /><span className="truncate" title={participant.observedName}>{participant.observedName}</span></p><PlayerMeta participant={participant} playerRank={playerRank} /></div></div><div className="shrink-0 text-right tabular-nums"><p className="text-sm font-bold">{participant.kills}/{participant.deaths}/{participant.assists}</p><p className="mt-0.5 text-[9px] text-[var(--muted)]">{formatKdaRatio(participant.kills, participant.deaths, participant.assists)} KDA</p></div></div>
+      <div className={`${compact ? "mt-2" : "mt-3"} flex flex-wrap items-center justify-between gap-2`}><div className="flex gap-1"><LolIcon asset={participant.primaryPerk} version={version} size={compact ? 22 : 26} />{participant.summonerSpells.map((spell, index) => <LolIcon key={index} asset={spell} version={version} size={compact ? 22 : 26} />)}</div><p className="text-xs text-[var(--muted)]">CS {participant.cs} · {formatCsPerMinute(participant.cs, durationSeconds)}/분 · {participant.goldEarned.toLocaleString()} G</p></div>
       <div className={compact ? "mt-2" : "mt-3"}><Inventory participant={participant} version={version} size={compact ? 22 : 28} /></div>
     </article>
+  );
+}
+
+function PlayerMeta({participant, playerRank}: {participant: ScoreboardParticipant; playerRank?: MatchPlayerRankMap[string]}) {
+  return (
+    <p className="mt-0.5 flex items-center gap-1 text-[10px] text-[var(--muted)]">
+      {playerRank && <><RankTierIcon rank={playerRank.rank} size={13} /><span>현재 {playerRank.rank} · {playerRank.queue}</span><span aria-hidden="true">·</span></>}
+      <span className="truncate">Lv.{participant.level} · {participant.champion.name}{participant.guest ? " · 게스트" : ""}</span>
+    </p>
   );
 }
 

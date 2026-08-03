@@ -2,21 +2,25 @@
 
 import LolIcon from "@/app/components/LolIcon";
 import {LolObjectiveIcon} from "@/app/components/LolGameUiIcon";
-import LolMatchScoreboard from "@/app/components/LolMatchScoreboard";
-import {groupMatchResultsByDate, sortParticipantsByRole} from "@/lib/lol/match-history-view";
-import type {MatchResultTeamStats, MatchTeam, PublicMatchResult} from "@/lib/lol/types";
+import LolMatchScoreboard, {type MatchPlayerRankMap} from "@/app/components/LolMatchScoreboard";
+import {groupMatchResultsByDate, playerNameKey, sortParticipantsByRole} from "@/lib/lol/match-history-view";
+import type {MatchResultTeamStats, MatchTeam, PlayerProfile, PublicMatchResult, RankInfo} from "@/lib/lol/types";
+import {rankTierDisplay} from "@/lib/lol/types";
 
-export default function PublicMatchHistory({results, loading, error, hasMore, onLoadMore}: {
+export default function PublicMatchHistory({results, players, loading, error, hasMore, onLoadMore}: {
   results: PublicMatchResult[];
+  players: PlayerProfile[];
   loading: boolean;
   error: string;
   hasMore: boolean;
   onLoadMore: () => void;
 }) {
   const dateGroups = groupMatchResultsByDate(results);
+  const playerRanks = Object.fromEntries(players.map((player) => [playerNameKey(player.riotGameName), currentRank(player)])) satisfies MatchPlayerRankMap;
+  const playerNames = Object.fromEntries(players.map((player) => [playerNameKey(player.riotGameName), player.displayName]));
 
   return (
-    <section aria-labelledby="history-title">
+    <section aria-labelledby="history-title" className="mx-auto w-full max-w-[1080px]">
       <div className="flex flex-wrap items-end justify-between gap-3">
         <div><p className="eyebrow">LoL History</p><h2 id="history-title" className="mt-2 text-2xl font-bold tracking-[-0.03em] sm:text-3xl">내전 경기 기록</h2></div>
         <p className="text-sm text-[var(--muted)]">경기를 누르면 전체 점수판을 볼 수 있어요.</p>
@@ -31,7 +35,7 @@ export default function PublicMatchHistory({results, loading, error, hasMore, on
               <span className="h-px flex-1 bg-[var(--hairline-soft)]" aria-hidden="true" />
             </div>
             <div className="space-y-1.5">
-              {group.results.map((result) => <MatchHistoryCard key={result.matchResultId} result={result} />)}
+              {group.results.map((result) => <MatchHistoryCard key={result.matchResultId} result={result} playerRanks={playerRanks} playerNames={playerNames} />)}
             </div>
           </section>
         ))}
@@ -43,7 +47,7 @@ export default function PublicMatchHistory({results, loading, error, hasMore, on
   );
 }
 
-function MatchHistoryCard({result}: {result: PublicMatchResult}) {
+function MatchHistoryCard({result, playerRanks, playerNames}: {result: PublicMatchResult; playerRanks: MatchPlayerRankMap; playerNames: Record<string, string>}) {
   const blueStats = result.teamStats.find((entry) => entry.team === "BLUE")!;
   const redStats = result.teamStats.find((entry) => entry.team === "RED")!;
   const blueWinner = result.winner === "BLUE";
@@ -51,10 +55,10 @@ function MatchHistoryCard({result}: {result: PublicMatchResult}) {
   return (
     <details className={`group overflow-hidden rounded-xl border border-[var(--hairline-soft)] border-l-4 bg-white ${blueWinner ? "border-l-[#4f83e3]" : "border-l-[#e94f6d]"}`}>
       <summary className="relative cursor-pointer list-none px-3.5 py-2.5 transition-colors hover:bg-[var(--surface-soft)] [&::-webkit-details-marker]:hidden">
-        <div className="grid gap-3 md:grid-cols-[110px_minmax(0,1fr)] lg:grid-cols-[100px_400px_minmax(0,1fr)] lg:items-center">
+        <div className="grid gap-3 md:grid-cols-[100px_minmax(0,1fr)] lg:grid-cols-[88px_360px_minmax(0,1fr)] lg:items-center">
           <MatchInfo winner={result.winner} durationSeconds={result.durationSeconds} />
           <TeamTotals blue={blueStats} red={redStats} />
-          <RosterSummary result={result} />
+          <RosterSummary result={result} playerNames={playerNames} />
         </div>
         <span className="absolute right-3 top-3 inline-flex items-center gap-1 rounded-full bg-white/90 px-2 py-1 text-[10px] font-semibold text-[var(--muted)] shadow-[0_0_0_1px_var(--hairline-soft)]">
           <span className="group-open:hidden">상세 보기</span><span className="hidden group-open:inline">접기</span>
@@ -62,7 +66,7 @@ function MatchHistoryCard({result}: {result: PublicMatchResult}) {
         </span>
       </summary>
       <div className="border-t border-[var(--hairline-soft)] bg-[var(--surface-soft)] p-2 sm:p-3">
-        <LolMatchScoreboard result={result} compact />
+        <LolMatchScoreboard result={result} compact playerRanks={playerRanks} />
       </div>
     </details>
   );
@@ -109,28 +113,32 @@ function Metric({kind, label, blue, red}: {kind: "gold" | "turret" | "dragon"; l
   );
 }
 
-function RosterSummary({result}: {result: PublicMatchResult}) {
+function RosterSummary({result, playerNames}: {result: PublicMatchResult; playerNames: Record<string, string>}) {
   return (
-    <div className="grid grid-cols-2 gap-3 md:col-span-2 md:grid-cols-[repeat(2,minmax(0,180px))] md:justify-center lg:col-span-1">
-      <RosterColumn result={result} team="BLUE" />
-      <RosterColumn result={result} team="RED" />
+    <div className="grid grid-cols-2 gap-3 md:col-span-2 md:grid-cols-[repeat(2,minmax(0,200px))] md:justify-center lg:col-span-1 lg:justify-start">
+      <RosterColumn result={result} team="BLUE" playerNames={playerNames} />
+      <RosterColumn result={result} team="RED" playerNames={playerNames} />
     </div>
   );
 }
 
-function RosterColumn({result, team}: {result: PublicMatchResult; team: MatchTeam}) {
+function RosterColumn({result, team, playerNames}: {result: PublicMatchResult; team: MatchTeam; playerNames: Record<string, string>}) {
   const participants = sortParticipantsByRole(result.participants.filter((participant) => participant.team === team));
   const blue = team === "BLUE";
   return (
     <div className="min-w-0">
       <p className={`mb-0.5 text-[9px] font-bold uppercase leading-none tracking-wide ${blue ? "text-[#3269bd]" : "text-[#c43652]"}`}>{blue ? "Blue team" : "Red team"}</p>
       <div className="space-y-0.5">
-        {participants.map((participant) => (
-          <div key={`${participant.role}-${participant.observedName}`} className="flex min-w-0 items-center gap-1.5">
-            <LolIcon asset={participant.champion} version={result.ddragonVersion} size={18} className="shrink-0 rounded" />
-            <span className="min-w-0 truncate text-[11px] font-medium leading-none" title={participant.observedName}>{participant.observedName}</span>
-          </div>
-        ))}
+        {participants.map((participant) => {
+          const displayName = playerNames[playerNameKey(participant.observedName)];
+          return (
+            <div key={`${participant.role}-${participant.observedName}`} className="flex min-w-0 items-center gap-1.5">
+              <LolIcon asset={participant.champion} version={result.ddragonVersion} size={18} className="shrink-0 rounded" />
+              <span className="min-w-0 flex-1 truncate text-[11px] font-medium leading-none" title={participant.observedName}>{participant.observedName}</span>
+              {displayName && <span className="max-w-16 shrink-0 truncate text-right text-[10px] font-semibold leading-none text-[var(--muted)]" title={displayName}>{displayName}</span>}
+            </div>
+          );
+        })}
       </div>
     </div>
   );
@@ -139,3 +147,11 @@ function RosterColumn({result, team}: {result: PublicMatchResult; team: MatchTea
 const formatDate = (value: string) => new Intl.DateTimeFormat("ko-KR", {dateStyle: "long", timeZone: "Asia/Seoul"}).format(new Date(`${value}T00:00:00+09:00`));
 const formatDuration = (seconds: number) => `${Math.floor(seconds / 60)}분 ${String(seconds % 60).padStart(2, "0")}초`;
 const formatGold = (gold: number) => `${(gold / 1000).toFixed(1)}K`;
+
+function currentRank(player: PlayerProfile): MatchPlayerRankMap[string] {
+  if (isRanked(player.soloRank)) return {rank: rankTierDisplay(player.soloRank), queue: "솔랭"};
+  if (isRanked(player.flexRank)) return {rank: rankTierDisplay(player.flexRank), queue: "자랭"};
+  return {rank: "배치 전", queue: "랭크"};
+}
+
+const isRanked = (rank: RankInfo) => rank.tier !== "UNRANKED";

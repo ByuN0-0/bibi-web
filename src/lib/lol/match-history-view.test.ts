@@ -1,5 +1,5 @@
 import {describe, expect, it} from "vitest";
-import {comparisonShare, groupMatchResultsByDate, sortParticipantsByRole} from "@/lib/lol/match-history-view";
+import {comparisonShare, formatCsPerMinute, formatKdaRatio, groupMatchResultsByDate, playerNameKey, sortParticipantsByRole} from "@/lib/lol/match-history-view";
 
 describe("match history view helpers", () => {
   it("groups matches by date in reverse chronological order while preserving each date's input order", () => {
@@ -32,5 +32,13 @@ describe("match history view helpers", () => {
   it("returns a balanced comparison when both values are zero", () => {
     expect(comparisonShare(0, 0)).toBe(50);
     expect(comparisonShare(30, 10)).toBe(75);
+  });
+
+  it("formats player detail ratios and stable name lookup keys", () => {
+    expect(formatKdaRatio(8, 2, 6)).toBe("7.00:1");
+    expect(formatKdaRatio(3, 0, 9)).toBe("Perfect");
+    expect(formatCsPerMinute(210, 1800)).toBe("7.0");
+    expect(formatCsPerMinute(0, 0)).toBe("0.0");
+    expect(playerNameKey("  내 연  ")).toBe("내 연");
   });
 });
