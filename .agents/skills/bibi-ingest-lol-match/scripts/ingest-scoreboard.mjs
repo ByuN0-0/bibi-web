@@ -20,7 +20,7 @@ export async function ingestScoreboard(screenshotPath, options = {}) {
   }
 
   const uploadStartedAt = performance.now();
-  const response = await submitMatchResult(options.validateOnly ? "validate" : "commit", recognition.payload);
+  const response = await submitMatchResult(options.validateOnly ? "validate" : "stage", recognition.payload);
   const uploadMs = Math.round(performance.now() - uploadStartedAt);
   return {
     outputPath,
@@ -45,16 +45,12 @@ async function runCli() {
     playersPath: option(argv, "--players"),
     validateOnly: argv.includes("--validate-only"),
   });
-  const summary = {
-    status: result.response.status,
-    matchResultId: result.response.result?.matchResultId ?? null,
-    outputPath: result.outputPath,
-    lowConfidenceAssets: result.lowConfidenceAssets,
-    recognitionMs: result.recognitionMs,
-    uploadMs: result.uploadMs,
-    totalMs: result.totalMs,
-  };
-  process.stdout.write(`${JSON.stringify(summary, null, 2)}\n`);
+  if (result.response.reviewPath) {
+    const baseUrl = process.env.BIBI_WEB_BASE_URL?.trim().replace(/\/$/, "");
+    process.stdout.write(`${baseUrl}${result.response.reviewPath}\n`);
+    return;
+  }
+  process.stdout.write(`${JSON.stringify({status: result.response.status, reviewIssues: result.response.reviewIssues ?? []}, null, 2)}\n`);
 }
 
 function option(argv, name) {

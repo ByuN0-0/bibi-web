@@ -40,6 +40,25 @@ describe("admin correction route", () => {
     expect(mocks.replaceResult).toHaveBeenCalledTimes(1);
   });
 
+  it("keeps review saves private and requires every issue before publishing", async () => {
+    const pending = pendingResult();
+    mocks.findResult.mockResolvedValue({key: "key", version: "version", value: pending});
+    const saved = await PATCH(request(editBody(pending, "save", "OPEN")), context());
+    expect(saved.status).toBe(200);
+    expect((await saved.json()).result.reviewStatus).toBe("PENDING_REVIEW");
+    expect(mocks.rebuildRatings).not.toHaveBeenCalled();
+
+    const rejected = await PATCH(request(editBody(pending, "publish", "OPEN")), context());
+    expect(rejected.status).toBe(400);
+
+    const published = await PATCH(request(editBody(pending, "publish", "CONFIRMED")), context());
+    const payload = await published.json();
+    expect(published.status).toBe(200);
+    expect(payload.result).toMatchObject({reviewStatus: "PUBLISHED"});
+    expect(payload.result.reviewIssues[0]).toMatchObject({status: "CONFIRMED"});
+    expect(mocks.rebuildRatings).toHaveBeenCalledTimes(1);
+  });
+
   it("deletes a stored result and rebuilds ratings", async () => {
     const response = await DELETE(deleteRequest(), context());
     expect(response.status).toBe(200);
@@ -58,9 +77,16 @@ describe("admin correction route", () => {
   });
 });
 
-function editBody() {
+function editBody(result = makeStoredResult(), action: "save" | "publish" = "save", issueStatus?: "OPEN" | "CONFIRMED" | "CORRECTED") {
+  return {...result, action, winner: "RED", reviewIssues: issueStatus ? result.reviewIssues?.map((issue) => ({key: issue.key, status: issueStatus})) : []};
+}
+function pendingResult() {
   const result = makeStoredResult();
-  return {...result, winner: "RED"};
+  result.schemaVersion = 5;
+  result.reviewStatus = "PENDING_REVIEW";
+  result.reviewedAt = null;
+  result.reviewIssues = [{key: "participant:BLUE:TOP:level:", target: {scope: "PARTICIPANT", team: "BLUE", role: "TOP", field: "level"}, reasons: ["LEVEL_UNRESOLVED"], detectedText: "114", status: "OPEN", resolvedAt: null}];
+  return result;
 }
 function request(body: Record<string, unknown>) {
   return new NextRequest("https://bibi.example/api/lol-statics/match-results/result-1", {method: "PATCH", headers: {"content-type": "application/json", origin: "https://bibi.example"}, body: JSON.stringify(body)});

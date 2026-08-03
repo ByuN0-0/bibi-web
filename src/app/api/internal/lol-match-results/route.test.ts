@@ -53,12 +53,16 @@ describe("internal match result route", () => {
     expect(mocks.save).not.toHaveBeenCalled();
   });
 
-  it("commits once and handles an idempotent retry", async () => {
-    const body = makeMatchInput(undefined, "commit");
+  it("stages once without rebuilding ratings and handles an idempotent retry", async () => {
+    const body = makeMatchInput(undefined, "stage");
     const created = await POST(request(body, token));
     const createdPayload = await created.json();
     expect(created.status).toBe(201);
+    expect(createdPayload.status).toBe("STAGED");
+    expect(createdPayload.result).toMatchObject({reviewStatus: "PENDING_REVIEW", reviewedAt: null});
+    expect(createdPayload.reviewPath).toBe(`/lol-statics/history/${createdPayload.result.matchResultId}/edit`);
     expect(mocks.save).toHaveBeenCalledTimes(1);
+    expect(mocks.rebuildRatings).not.toHaveBeenCalled();
     mocks.findByIngestionId.mockResolvedValue({key: "key", version: "version", value: createdPayload.result});
     const existing = await POST(request(body, token));
     expect(existing.status).toBe(200);
@@ -66,20 +70,29 @@ describe("internal match result route", () => {
     expect(mocks.save).toHaveBeenCalledTimes(1);
   });
 
-  it("updates only player mappings for an existing ingestion", async () => {
+  it("treats commit as a private stage compatibility alias", async () => {
+    const response = await POST(request(makeMatchInput(undefined, "commit"), token));
+    const payload = await response.json();
+    expect(response.status).toBe(201);
+    expect(payload).toMatchObject({status: "STAGED", result: {reviewStatus: "PENDING_REVIEW"}});
+    expect(mocks.save).toHaveBeenCalledTimes(1);
+    expect(mocks.rebuildRatings).not.toHaveBeenCalled();
+  });
+
+  it("does not overwrite review work for an existing ingestion", async () => {
     const players = makePlayers();
-    const body = makeMatchInput(players, "commit");
+    const body = makeMatchInput(players, "stage");
     body.participants[0].discordUserId = players[0].discordUserId;
     const created = await POST(request(body, token));
     const existingResult = (await created.json()).result as MatchResult;
-    existingResult.participants[0] = {...existingResult.participants[0], discordUserId: null, guest: true};
+    existingResult.reviewIssues = [{key: "participant:BLUE:TOP:level:", target: {scope: "PARTICIPANT", team: "BLUE", role: "TOP", field: "level"}, reasons: ["LEVEL_UNRESOLVED"], status: "CONFIRMED", resolvedAt: 1}];
     mocks.findByIngestionId.mockResolvedValue({key: "key", version: "version", value: existingResult});
     const response = await POST(request(body, token));
     const payload = await response.json();
     expect(response.status).toBe(200);
-    expect(payload.status).toBe("UPDATED");
-    expect(payload.result.participants[0]).toEqual(expect.objectContaining({discordUserId: "player-1", guest: false}));
-    expect(mocks.replace).toHaveBeenCalledTimes(1);
+    expect(payload.status).toBe("EXISTING");
+    expect(payload.result.reviewIssues[0].status).toBe("CONFIRMED");
+    expect(mocks.replace).not.toHaveBeenCalled();
   });
 });
 

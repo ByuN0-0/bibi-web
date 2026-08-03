@@ -223,6 +223,31 @@ export type MatchResultCorrection = {
   correctedBy: "ingest-api" | "web-admin";
 };
 
+export type MatchReviewStatus = "PENDING_REVIEW" | "PUBLISHED";
+export type MatchReviewIssueStatus = "OPEN" | "CONFIRMED" | "CORRECTED";
+export type MatchReviewIssueReason = "LEVEL_UNRESOLVED" | "LOW_MARGIN" | "METHOD_DISAGREEMENT" | "CONSTRAINT_OVERRIDE";
+export type MatchReviewTarget =
+  | {scope: "TEAM"; team: MatchTeam; field: "ban"; slot: number}
+  | {
+    scope: "PARTICIPANT";
+    team: MatchTeam;
+    role: Role;
+    field: "level" | "champion" | "primaryPerk" | "summonerSpell" | "item" | "trinket" | "questSlot";
+    slot?: number;
+  };
+
+export type MatchReviewIssue = {
+  key: string;
+  target: MatchReviewTarget;
+  reasons: MatchReviewIssueReason[];
+  detectedText?: string;
+  selectedAssetId?: string;
+  score?: number;
+  runnerUpGap?: number | null;
+  status: MatchReviewIssueStatus;
+  resolvedAt: number | null;
+};
+
 export type MatchResult = {
   schemaVersion: number;
   matchResultId: string;
@@ -238,6 +263,9 @@ export type MatchResult = {
   revision: number;
   correctedBy: "ingest-api" | "web-admin";
   corrections: MatchResultCorrection[];
+  reviewStatus?: MatchReviewStatus;
+  reviewIssues?: MatchReviewIssue[];
+  reviewedAt?: number | null;
   createdAt: number;
   updatedAt: number;
 };

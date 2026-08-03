@@ -11,11 +11,12 @@ import {
   repairMissingParticipantTotals,
   roleFromQuest,
   selectSpellQuestCombination,
+  selectLevelReading,
   selectTeamSpellQuestAssignments,
   selectUniqueAssetAssignments,
   validateMechanicalTotals,
 } from "./scoreboard-machine-core.mjs";
-import {applyBanOverlayModel, banCropLooksUnselected, extractBanOverlayModel, isDecisiveBanOverlay, isObtainableInventoryItem, isScoreboardKeystone, participantAssetCoordinates, participantInventoryCoordinates} from "./resolve-ddragon-assets.mjs";
+import {applyBanOverlayModel, banCropLooksUnselected, extractBanOverlayModel, isAcceptedAssetMatch, isDecisiveBanOverlay, isObtainableInventoryItem, isScoreboardKeystone, participantAssetCoordinates, participantInventoryCoordinates} from "./resolve-ddragon-assets.mjs";
 
 describe("scoreboard machine parsing", () => {
   it("normalizes common OCR substitutions", () => {
@@ -24,6 +25,22 @@ describe("scoreboard machine parsing", () => {
     expect(parseDuration("23-32")).toBe(23 * 60 + 32);
     expect(parseDuration("34:-09")).toBe(34 * 60 + 9);
     expect(parseKda("11 / 3 / 13")).toEqual([11, 3, 13]);
+  });
+
+  it("selects a valid level retry and falls back to a flagged level 1", () => {
+    expect(selectLevelReading([{text: "114", confidence: 90}, {text: "14", confidence: 70}])).toEqual({value: 14, reviewIssue: null});
+    expect(selectLevelReading([{text: "115", confidence: 90}, {text: "", confidence: 0}])).toEqual({value: 15, reviewIssue: null});
+    expect(selectLevelReading([{text: "999", confidence: 90}, {text: "", confidence: 0}])).toEqual({
+      value: 1,
+      reviewIssue: {reasons: ["LEVEL_UNRESOLVED"], detectedText: "999"},
+    });
+  });
+
+  it("requires comparison-method agreement for assets and overlay agreement for bans", () => {
+    expect(isAcceptedAssetMatch({kind: "perk", methodAgreed: false, uniqueMatch: true, clearPerk: true})).toBe(false);
+    expect(isAcceptedAssetMatch({kind: "perk", methodAgreed: true, uniqueMatch: true})).toBe(true);
+    expect(isAcceptedAssetMatch({kind: "ban", methodAgreed: true, overlayAgreed: false, overlayDecisive: true})).toBe(false);
+    expect(isAcceptedAssetMatch({kind: "ban", methodAgreed: true, overlayAgreed: true, overlayDecisive: true})).toBe(true);
   });
 
   it("matches Korean, English and OCR-confusable alt account names", () => {

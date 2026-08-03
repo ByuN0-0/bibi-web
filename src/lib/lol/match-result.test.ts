@@ -1,5 +1,5 @@
 import {describe, expect, it} from "vitest";
-import {bearerTokenMatches, createMatchResult, matchResultSourceHash, parseAdminMatchResultUpdate, parseMatchResultInput, prepareMatchResult} from "@/lib/lol/match-result";
+import {bearerTokenMatches, createMatchResult, matchResultSourceHash, parseAdminMatchResultUpdate, parseMatchResultInput, parseMatchReviewIssues, prepareMatchResult} from "@/lib/lol/match-result";
 import {fixtureNow, makeMatchInput, makePlayers, makeStoredResult, teleport} from "@/lib/lol/match-result-test-fixtures";
 
 describe("match result ingestion", () => {
@@ -8,7 +8,7 @@ describe("match result ingestion", () => {
     const parsed = parseMatchResultInput(makeMatchInput(players));
     const prepared = prepareMatchResult(parsed, players);
     const result = createMatchResult(prepared, fixtureNow);
-    expect(result).toMatchObject({schemaVersion: 4, playedOn: "2026-08-02", durationSeconds: 1800, ddragonVersion: "16.15.1"});
+    expect(result).toMatchObject({schemaVersion: 5, reviewStatus: "PENDING_REVIEW", reviewIssues: [], playedOn: "2026-08-02", durationSeconds: 1800, ddragonVersion: "16.15.1"});
     expect(result).not.toHaveProperty("sessionId");
     expect(result.participants[0]).toMatchObject({guest: false, trinket: null, questSlot: {id: "1200"}});
     expect(result.participants[0].items).toHaveLength(6);
@@ -68,6 +68,30 @@ describe("match result ingestion", () => {
     const mismatch = makeMatchInput();
     mismatch.teamStats[0].goldTotal += 1;
     expect(() => parseMatchResultInput(mismatch)).toThrow("BLUE 팀 goldTotal 합계가 개인 합계와 일치하지 않습니다.");
+  });
+
+  it("accepts only scoreboard levels 1 through 18 for ingestion and admin edits", () => {
+    for (const level of [0, 19, 114]) {
+      const body = makeMatchInput();
+      body.participants[0].level = level;
+      expect(() => parseMatchResultInput(body)).toThrow("1~18");
+      const stored = makeStoredResult();
+      stored.participants[0].level = level;
+      expect(() => parseAdminMatchResultUpdate(stored, makePlayers())).toThrow("1~18");
+    }
+  });
+
+  it("parses stable review targets and forces new issues open", () => {
+    const body = makeMatchInput();
+    Object.assign(body, {reviewIssues: [{
+      key: "ignored-client-key",
+      target: {scope: "PARTICIPANT", team: "BLUE", role: "TOP", field: "level"},
+      reasons: ["LEVEL_UNRESOLVED"], detectedText: "114", status: "CONFIRMED",
+    }]});
+    const parsed = parseMatchResultInput(body);
+    expect(parseMatchReviewIssues(body, parsed)).toEqual([expect.objectContaining({
+      key: "participant:BLUE:TOP:level:", status: "OPEN", detectedText: "114",
+    })]);
   });
 
   it("maps position quests to roles, rejects duplicates, and stores canonical role order", () => {

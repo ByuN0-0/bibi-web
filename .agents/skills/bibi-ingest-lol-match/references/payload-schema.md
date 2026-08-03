@@ -2,7 +2,7 @@
 
 ## API contract
 
-Send `POST /api/internal/lol-match-results` with `Authorization: Bearer <BIBI_INGEST_TOKEN>` and `Content-Type: application/json`. The body is at most 64 KiB. Use the same body and `ingestionId` for `validate` and `commit`, changing only `action`.
+Send `POST /api/internal/lol-match-results` with `Authorization: Bearer <BIBI_INGEST_TOKEN>` and `Content-Type: application/json`. The body is at most 64 KiB. Use the same body and `ingestionId` for `validate` and `stage`, changing only `action`. `commit` is a compatibility alias for `stage`.
 
 The match record is independent of team-balancing sessions and has no `sessionId`. The API maps uniquely matching player names when possible and stores every unmatched or ambiguous name as a guest. `ingestionId` is the only ingestion idempotency key.
 
@@ -10,7 +10,7 @@ Before recognition, call authenticated `GET /api/internal/lol-match-results` or 
 
 ```json
 {
-  "action": "validate",
+  "action": "stage",
   "ingestionId": "lol-scoreboard:<sha256>",
   "playedOn": "2026-08-01",
   "durationSeconds": 1785,
@@ -59,6 +59,10 @@ Before recognition, call authenticated `GET /api/internal/lol-match-results` or 
   ]
 }
 ```
+
+The payload may include up to 80 mechanically generated `reviewIssues`. Each issue uses a stable team/role target rather than an array index. New issues are always stored as `OPEN`; client-supplied resolved states are ignored. Level recognition failure uses level `1`, reason `LEVEL_UNRESOLVED`, and the original OCR text. Asset issues use `LOW_MARGIN`, `METHOD_DISAGREEMENT`, or `CONSTRAINT_OVERRIDE` plus the selected canonical asset ID and compact score diagnostics.
+
+Every staged result is stored as `PENDING_REVIEW`. It is excluded from public history and Elo until an authenticated administrator resolves every issue and publishes it from `/lol-statics/history/{matchResultId}/edit`. The screenshot is never included in this payload.
 
 Include two team records and ten participant records, five per team. `winner` and all participant teams are `BLUE` or `RED`. `playedOn` is the scoreboard date in Asia/Seoul. If only a date is shown, store that date without inventing a time.
 

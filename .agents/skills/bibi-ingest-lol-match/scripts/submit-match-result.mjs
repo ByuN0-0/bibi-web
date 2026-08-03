@@ -3,8 +3,8 @@ import {readFile} from "node:fs/promises";
 import {pathToFileURL} from "node:url";
 
 export async function submitMatchResult(action, payload) {
-  if (!(action === "players" || ["validate", "commit"].includes(action))) {
-    throw new Error("action must be players, validate, or commit.");
+  if (!(action === "players" || ["validate", "stage", "commit"].includes(action))) {
+    throw new Error("action must be players, validate, stage, or commit.");
   }
 
   const baseUrl = process.env.BIBI_WEB_BASE_URL?.trim().replace(/\/$/, "");
@@ -39,8 +39,8 @@ export async function submitMatchResult(action, payload) {
 
 async function runCli() {
   const [action, inputPath] = process.argv.slice(2);
-  if (!(action === "players" || (["validate", "commit"].includes(action) && inputPath))) {
-    throw new Error("Usage: submit-match-result.mjs players | <validate|commit> <payload.json>");
+  if (!(action === "players" || (["validate", "stage", "commit"].includes(action) && inputPath))) {
+    throw new Error("Usage: submit-match-result.mjs players | <validate|stage|commit> <payload.json>");
   }
   let payload;
   if (action !== "players") {

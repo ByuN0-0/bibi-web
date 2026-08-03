@@ -20,6 +20,7 @@ import {
   REFERENCE_ROWS,
   repairImplausibleParticipantTotals,
   repairMissingParticipantTotals,
+  selectLevelReading,
   validateMechanicalTotals,
 } from "./scoreboard-machine-core.mjs";
 import {participantInventoryCoordinates, resolveDataDragonAssets} from "./resolve-ddragon-assets.mjs";
@@ -31,6 +32,7 @@ let ocrLog;
 let ocrQueue;
 let players;
 let sharedWorkersPromise;
+let recognitionIssues;
 
 export async function readScoreboardImage(original, options = {}) {
   const startedAt = performance.now();
@@ -50,6 +52,7 @@ export async function readScoreboardImage(original, options = {}) {
   worker = workers.worker;
   englishWorker = workers.englishWorker;
   ocrLog = [];
+  recognitionIssues = [];
   ocrQueue = Promise.resolve();
   let recognizedPayload;
   try {
@@ -74,6 +77,8 @@ export async function readScoreboardImage(original, options = {}) {
     resolvedPayload = resolved.payload;
     report.assets = resolved.assets;
   }
+  resolvedPayload.reviewIssues = buildReviewIssues(resolvedPayload, resolvedPayload.reviewIssues ?? recognitionIssues, report.assets);
+  report.reviewIssues = resolvedPayload.reviewIssues;
   report.elapsedMs = Math.round(performance.now() - startedAt);
   return {payload: resolvedPayload, recognizedPayload, report, aligned};
 }
@@ -177,7 +182,7 @@ async function recognizeScoreboard(original, assetLayout) {
       const [nameResult, englishNameResult, level, combinedKda, fallbackKills, fallbackDeaths, fallbackAssists, cs, goldEarned, wideGold] = await Promise.all([
         textField(`participants.${index}.name`, nameRectangle),
         englishNameField(`participants.${index}.nameEnglish`, nameRectangle),
-        numberField(`participants.${index}.level`, 72, row, 28),
+        levelField(`participants.${index}.level`, 72, row),
         kdaField(`participants.${index}.kda`, row),
         numberField(`participants.${index}.kills`, 526, row, 24, {narrowRetry: true, allowMissing: true}),
         numberField(`participants.${index}.deaths`, 561, row, 24, {narrowRetry: true, allowMissing: true}),
@@ -233,8 +238,83 @@ async function recognizeScoreboard(original, assetLayout) {
     action: "validate",
     ingestionId: `lol-scoreboard:${createHash("sha256").update(original).digest("hex")}`,
     playedOn, winner, durationSeconds,
-    teamStats, participants,
+    teamStats, participants, reviewIssues: recognitionIssues,
   };
+}
+
+async function levelField(field, centerX, centerY) {
+  const variants = [
+    {left: Math.round(centerX - 14), top: centerY - 13, width: 28, height: 26, type: "number"},
+    {left: Math.round(centerX - 11), top: centerY - 13, width: 22, height: 26, type: "number"},
+    {left: Math.round(centerX - 12), top: centerY - 13, width: 23, height: 26, type: "number-high"},
+  ];
+  const readings = [];
+  for (let index = 0; index < variants.length; index += 1) {
+    const variant = variants[index];
+    readings.push(await textField(index === 0 ? field : `${field}.retry${index}`, variant, variant.type));
+  }
+  const selected = selectLevelReading(readings);
+  if (selected.reviewIssue) recognitionIssues.push({field, ...selected.reviewIssue});
+  return selected.value;
+}
+
+export function buildReviewIssues(payload, numericIssues = [], assets = []) {
+  const entries = [
+    ...numericIssues,
+    ...assets.filter((asset) => !asset.accepted).map((asset) => ({
+      field: asset.field,
+      reasons: assetReasons(asset),
+      selectedAssetId: asset.selected?.id,
+      score: asset.score,
+      runnerUpGap: asset.runnerUpGap,
+    })),
+  ];
+  const issues = new Map();
+  for (const entry of entries) {
+    const target = reviewTarget(payload, entry.field);
+    if (!target) continue;
+    const key = reviewTargetKey(target);
+    const existing = issues.get(key);
+    issues.set(key, {
+      key,
+      target,
+      reasons: [...new Set([...(existing?.reasons ?? []), ...entry.reasons])],
+      ...(entry.detectedText ? {detectedText: entry.detectedText} : {}),
+      ...(entry.selectedAssetId ? {selectedAssetId: entry.selectedAssetId} : {}),
+      ...(Number.isFinite(entry.score) ? {score: entry.score} : {}),
+      ...(entry.runnerUpGap === null || Number.isFinite(entry.runnerUpGap) ? {runnerUpGap: entry.runnerUpGap} : {}),
+      status: "OPEN",
+      resolvedAt: null,
+    });
+  }
+  return [...issues.values()];
+}
+
+function assetReasons(asset) {
+  const reasons = [];
+  if (asset.methodAgreed === false || asset.overlayAgreed === false) reasons.push("METHOD_DISAGREEMENT");
+  if (String(asset.reason).includes("constraint")) reasons.push("CONSTRAINT_OVERRIDE");
+  const minimumGap = asset.kind === "ban" ? 12 : ["spell", "item", "trinket", "quest"].includes(asset.kind) ? 10 : 18;
+  if (!reasons.length || String(asset.reason).includes("low-confidence") || Number(asset.runnerUpGap) < minimumGap) reasons.push("LOW_MARGIN");
+  return [...new Set(reasons)];
+}
+
+function reviewTarget(payload, field) {
+  let match = field.match(/^teamStats\[(\d+)]\.bans\[(\d+)]$/);
+  if (match) return {scope: "TEAM", team: payload.teamStats[Number(match[1])]?.team, field: "ban", slot: Number(match[2])};
+  match = field.match(/^participants\[(\d+)]\.(level|champion|primaryPerk|summonerSpells\[(\d+)]|items\[(\d+)]|trinket|questSlot)$/);
+  if (!match) return null;
+  const participant = payload.participants[Number(match[1])];
+  if (!participant?.role) return null;
+  if (match[2].startsWith("summonerSpells")) return {scope: "PARTICIPANT", team: participant.team, role: participant.role, field: "summonerSpell", slot: Number(match[3])};
+  if (match[2].startsWith("items")) return {scope: "PARTICIPANT", team: participant.team, role: participant.role, field: "item", slot: Number(match[4])};
+  return {scope: "PARTICIPANT", team: participant.team, role: participant.role, field: match[2]};
+}
+
+function reviewTargetKey(target) {
+  return target.scope === "TEAM"
+    ? `team:${target.team}:ban:${target.slot}`
+    : `participant:${target.team}:${target.role}:${target.field}:${target.slot ?? ""}`;
 }
 
 function reconcileNumericAlternatives(teamStats, participants, alternatives) {
@@ -282,7 +362,7 @@ async function runCli() {
   if (alignedOutput) await writeFile(alignedOutput, result.aligned, {mode: 0o600});
   if (reportOutput) await writeFile(reportOutput, `${JSON.stringify(result.report, null, 2)}\n`, {mode: 0o600});
   const reviewCount = result.report.assets.filter((asset) => !asset.accepted).length;
-  if (reviewCount) process.stdout.write(`Review required for ${reviewCount} low-confidence assets before validation or commit.\n`);
+  if (reviewCount) process.stdout.write(`Staged web review will include ${reviewCount} low-confidence assets.\n`);
   process.stdout.write(`Mechanical scoreboard read completed in ${result.report.elapsedMs}ms (alignment confidence ${(result.report.layout.confidence * 100).toFixed(0)}%).\n`);
 }
 

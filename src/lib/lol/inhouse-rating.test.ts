@@ -19,6 +19,15 @@ describe("inhouse Elo", () => {
     expect(calculateInhouseRatings([result]).sourceMatchCount).toBe(0);
   });
 
+  it("excludes pending-review results and treats legacy results as published", () => {
+    const pending = makeStoredResult();
+    pending.reviewStatus = "PENDING_REVIEW";
+    expect(calculateInhouseRatings([pending]).sourceMatchCount).toBe(0);
+    const legacy = makeStoredResult();
+    delete legacy.reviewStatus;
+    expect(calculateInhouseRatings([legacy]).sourceMatchCount).toBe(1);
+  });
+
   it("normalizes Elo into the balancing range", () => {
     expect(inhouseBalanceSignal(1500)).toBe(.5);
     expect(inhouseBalanceSignal(1100)).toBe(0);

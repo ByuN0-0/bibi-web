@@ -6,6 +6,7 @@ import LolIcon from "@/app/components/LolIcon";
 import LolMatchScoreboard from "@/app/components/LolMatchScoreboard";
 import {readApiJson} from "@/lib/api-response";
 import type {MatchResult, MatchTeam} from "@/lib/lol/types";
+import {matchReviewIssues, matchReviewStatus} from "@/lib/lol/match-review";
 
 type Notice = {kind: "success" | "error"; message: string};
 
@@ -86,12 +87,14 @@ export default function AdminMatchHistory({initialResults, initialNextOffset, in
       <div className="space-y-2">
         {results.map((result) => {
           const opened = openId === result.matchResultId;
+          const pendingReview = matchReviewStatus(result) === "PENDING_REVIEW";
+          const openIssues = matchReviewIssues(result).filter((issue) => issue.status === "OPEN").length;
           return <article key={result.matchResultId} className="surface-card overflow-hidden">
             <button type="button" aria-expanded={opened} onClick={() => setOpenId(opened ? null : result.matchResultId)} className="w-full px-4 py-3 text-left transition hover:bg-[var(--surface-soft)] sm:px-5">
-              <div className="flex flex-wrap items-center justify-between gap-2"><div className="flex items-center gap-3"><WinnerBadge winner={result.winner} /><p className="text-sm font-bold">{formatDate(result.playedOn)} <span className="ml-1 font-normal text-[var(--muted)]">{formatDuration(result.durationSeconds)}</span></p></div><span className="text-xs font-bold text-[var(--primary)]">{opened ? "접기 ↑" : "점수판 펼치기 ↓"}</span></div>
+              <div className="flex flex-wrap items-center justify-between gap-2"><div className="flex items-center gap-3"><WinnerBadge winner={result.winner} />{pendingReview && <span className="rounded-full bg-[var(--warning-soft)] px-2.5 py-1 text-[11px] font-bold text-[var(--warning)]">검토 대기{openIssues ? ` · ${openIssues}건` : ""}</span>}<p className="text-sm font-bold">{formatDate(result.playedOn)} <span className="ml-1 font-normal text-[var(--muted)]">{formatDuration(result.durationSeconds)}</span></p></div><span className="text-xs font-bold text-[var(--primary)]">{opened ? "접기 ↑" : "점수판 펼치기 ↓"}</span></div>
               <div className="mt-3 grid gap-2 lg:grid-cols-2"><TeamSummary result={result} team="BLUE" /><TeamSummary result={result} team="RED" /></div>
             </button>
-            {opened && <div className="border-t border-[var(--hairline-soft)] bg-white p-3 sm:p-4"><LolMatchScoreboard result={result} compact /><div className="mt-4 flex flex-wrap items-center justify-between gap-3 border-t border-[var(--hairline-soft)] pt-4"><p className="text-xs text-[var(--muted)]">Data Dragon {result.ddragonVersion} · 리비전 {result.revision} · 게스트 {result.participants.filter((participant) => participant.guest).length}명</p><div className="flex gap-2"><button type="button" disabled={!!deletingId} onClick={() => {setNotice(null); setDeleteTarget(result);}} className="secondary-button border-[#f2b8aa] text-[var(--error)] disabled:opacity-50">삭제</button><Link href={`/lol-statics/history/${encodeURIComponent(result.matchResultId)}/edit`} className="primary-button">결과 수정</Link></div></div></div>}
+            {opened && <div className="border-t border-[var(--hairline-soft)] bg-white p-3 sm:p-4"><LolMatchScoreboard result={result} compact /><div className="mt-4 flex flex-wrap items-center justify-between gap-3 border-t border-[var(--hairline-soft)] pt-4"><p className="text-xs text-[var(--muted)]">Data Dragon {result.ddragonVersion} · 리비전 {result.revision} · 게스트 {result.participants.filter((participant) => participant.guest).length}명</p><div className="flex gap-2"><button type="button" disabled={!!deletingId} onClick={() => {setNotice(null); setDeleteTarget(result);}} className="secondary-button border-[#f2b8aa] text-[var(--error)] disabled:opacity-50">삭제</button><Link href={`/lol-statics/history/${encodeURIComponent(result.matchResultId)}/edit`} className="primary-button">{pendingReview ? "검토하기" : "결과 수정"}</Link></div></div></div>}
           </article>;
         })}
         {!results.length && <div className="surface-card border-dashed py-20 text-center text-sm text-[var(--muted)]">아직 저장된 내전 경기가 없습니다.</div>}

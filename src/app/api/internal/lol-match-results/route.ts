@@ -5,18 +5,12 @@ import {
   createMatchResult,
   matchResultSourceHash,
   MatchResultError,
+  parseMatchReviewIssues,
   parseMatchResultInput,
   prepareMatchResult,
 } from "@/lib/lol/match-result";
 import {validateDataDragonReferences} from "@/lib/lol/data-dragon";
-import {
-  findMatchResultByIngestionId,
-  listPlayers,
-  listPlayerAccounts,
-  replaceMatchResult,
-  saveMatchResult,
-} from "@/lib/lol/repository";
-import {rebuildInhouseRatingSnapshot} from "@/lib/lol/inhouse-rating-service";
+import {findMatchResultByIngestionId, listPlayers, listPlayerAccounts, saveMatchResult} from "@/lib/lol/repository";
 
 const MAX_BODY_BYTES = 64 * 1024;
 
@@ -60,10 +54,11 @@ export async function POST(request: NextRequest) {
       return errorResponse("JSON 요청 본문이 올바르지 않습니다.", 400, "INVALID_JSON");
     }
     const action = (body as Record<string, unknown>)?.action;
-    if (action !== "validate" && action !== "commit") {
-      return errorResponse("action은 validate 또는 commit이어야 합니다.", 400, "INVALID_ACTION");
+    if (action !== "validate" && action !== "stage" && action !== "commit") {
+      return errorResponse("action은 validate, stage 또는 commit이어야 합니다.", 400, "INVALID_ACTION");
     }
     const parsed = parseMatchResultInput(body);
+    const reviewIssues = parseMatchReviewIssues(body, parsed);
     await validateDataDragonReferences(parsed);
     const [players, accounts] = await Promise.all([listPlayers(), listPlayerAccounts()]);
     const prepared = prepareMatchResult(parsed, players, accounts);
@@ -77,32 +72,14 @@ export async function POST(request: NextRequest) {
           "INGESTION_ID_CONFLICT",
         );
       }
-      if (action === "validate") return validationResponse(parsed, prepared, true);
-      if (!samePlayerMappings(existing.value.participants, prepared.participants)) {
-        const now = Date.now();
-        const updated = {
-          ...existing.value,
-          participants: prepared.participants,
-          revision: existing.value.revision + 1,
-          correctedBy: "ingest-api" as const,
-          corrections: [
-            ...(existing.value.corrections ?? []),
-            {revision: existing.value.revision + 1, correctedAt: now, correctedBy: "ingest-api" as const},
-          ],
-          updatedAt: now,
-        };
-        await replaceMatchResult(existing, updated);
-        await rebuildInhouseRatingSnapshot();
-        return NextResponse.json({status: "UPDATED", created: false, result: updated});
-      }
-      await rebuildInhouseRatingSnapshot();
-      return NextResponse.json({status: "EXISTING", created: false, result: existing.value});
+      if (action === "validate") return validationResponse(parsed, prepared, reviewIssues, true);
+      return NextResponse.json({status: "EXISTING", created: false, result: existing.value, reviewPath: reviewPath(existing.value.matchResultId)});
     }
     const sourceHash = matchResultSourceHash(parsed);
     if (action === "validate") {
-      return validationResponse(parsed, prepared, false);
+      return validationResponse(parsed, prepared, reviewIssues, false);
     }
-    const saved = await saveMatchResult(createMatchResult(prepared));
+    const saved = await saveMatchResult(createMatchResult(prepared, Date.now(), "ingest-api", reviewIssues));
     if (!saved.created && saved.result.sourceHash !== sourceHash) {
       return errorResponse(
         "같은 ingestionId로 다른 경기 결과를 저장할 수 없습니다.",
@@ -110,8 +87,7 @@ export async function POST(request: NextRequest) {
         "INGESTION_ID_CONFLICT",
       );
     }
-    if (saved.created) await rebuildInhouseRatingSnapshot();
-    return NextResponse.json({status: saved.created ? "CREATED" : "EXISTING", ...saved}, {
+    return NextResponse.json({status: saved.created ? "STAGED" : "EXISTING", ...saved, reviewPath: reviewPath(saved.result.matchResultId)}, {
       status: saved.created ? 201 : 200,
     });
   } catch (error) {
@@ -125,6 +101,7 @@ export async function POST(request: NextRequest) {
 function validationResponse(
   parsed: ReturnType<typeof parseMatchResultInput>,
   prepared: ReturnType<typeof prepareMatchResult>,
+  reviewIssues: ReturnType<typeof parseMatchReviewIssues>,
   existing: boolean,
 ) {
   return NextResponse.json({
@@ -132,6 +109,7 @@ function validationResponse(
     existing,
     sourceHash: prepared.sourceHash,
     guestCount: prepared.guestCount,
+    reviewIssues,
     match: {
       playedOn: parsed.playedOn,
       winner: parsed.winner,
@@ -143,10 +121,8 @@ function validationResponse(
   });
 }
 
-function samePlayerMappings(left: Array<{discordUserId: string | null; guest: boolean}>, right: Array<{discordUserId: string | null; guest: boolean}>) {
-  return left.length === right.length && left.every((participant, index) => (
-    participant.discordUserId === right[index]?.discordUserId && participant.guest === right[index]?.guest
-  ));
+function reviewPath(matchResultId: string) {
+  return `/lol-statics/history/${encodeURIComponent(matchResultId)}/edit`;
 }
 
 function errorResponse(error: string, status: number, code: string) {

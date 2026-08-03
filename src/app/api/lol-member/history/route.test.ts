@@ -3,12 +3,12 @@ import {NextRequest} from "next/server";
 import {makeMatchInput} from "@/lib/lol/match-result-test-fixtures";
 import type {MatchResult} from "@/lib/lol/types";
 
-vi.mock("@/lib/lol/repository", () => ({listMatchResultsPage: vi.fn()}));
+vi.mock("@/lib/lol/repository", () => ({listPublishedMatchResultsPage: vi.fn()}));
 
-import {listMatchResultsPage} from "@/lib/lol/repository";
+import {listPublishedMatchResultsPage} from "@/lib/lol/repository";
 import {GET} from "@/app/api/lol-member/history/route";
 
-const mockedList = vi.mocked(listMatchResultsPage);
+const mockedList = vi.mocked(listPublishedMatchResultsPage);
 
 describe("public match history API", () => {
   beforeEach(() => mockedList.mockReset());

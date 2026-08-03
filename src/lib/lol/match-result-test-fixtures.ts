@@ -20,7 +20,7 @@ export function zeroObjectives() {
   return {turretsDestroyed: 0, inhibitorsDestroyed: 0, baronKills: 0, dragonKills: 0, riftHeraldKills: 0, voidGrubKills: 0};
 }
 
-export function makeMatchInput(players = makePlayers(), action: "validate" | "commit" = "validate") {
+export function makeMatchInput(players = makePlayers(), action: "validate" | "stage" | "commit" = "validate") {
   const participants = players.slice(0, 10).map((player, index) => {
     const role = (["TOP", "JUNGLE", "MIDDLE", "BOTTOM", "UTILITY"] as const)[index % 5];
     return {

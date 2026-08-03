@@ -4,6 +4,9 @@ import type {
   MatchObjectives,
   MatchResult,
   MatchResultParticipant,
+  MatchReviewIssue,
+  MatchReviewIssueReason,
+  MatchReviewTarget,
   MatchResultTeamStats,
   MatchTeam,
   PlayerProfile,
@@ -12,6 +15,7 @@ import type {
 } from "@/lib/lol/types";
 import {MATCH_TEAMS, ROLES} from "@/lib/lol/types";
 import {participantRoleAssetError, roleFromQuestSlot} from "@/lib/lol/match-role-assets";
+import {reviewTargetKey} from "@/lib/lol/match-review";
 
 const ASSET_PATH = /^(?:img\/(?:champion|item|spell)\/[A-Za-z0-9_.-]+\.png|perk-images\/[A-Za-z0-9_./-]+\.png)$/;
 const OBJECTIVE_FIELDS = [
@@ -22,6 +26,7 @@ const OBJECTIVE_FIELDS = [
   "riftHeraldKills",
   "voidGrubKills",
 ] as const satisfies ReadonlyArray<keyof MatchObjectives>;
+const REVIEW_REASONS = new Set<MatchReviewIssueReason>(["LEVEL_UNRESOLVED", "LOW_MARGIN", "METHOD_DISAGREEMENT", "CONSTRAINT_OVERRIDE"]);
 
 export type ParsedMatchParticipant = Omit<MatchResultParticipant, "guest">;
 
@@ -81,6 +86,43 @@ export function parseMatchResultInput(input: unknown): ParsedMatchResultInput {
   return result;
 }
 
+export function parseMatchReviewIssues(input: unknown, parsed: ParsedMatchResultInput): MatchReviewIssue[] {
+  const body = record(input, "요청 본문이 올바르지 않습니다.");
+  if (body.reviewIssues === undefined) return [];
+  if (!Array.isArray(body.reviewIssues) || body.reviewIssues.length > 80) {
+    throw new MatchResultError("reviewIssues는 최대 80개까지 포함할 수 있습니다.");
+  }
+  const seen = new Set<string>();
+  return body.reviewIssues.map((value, index) => {
+    const issue = record(value, `reviewIssues[${index}]가 올바르지 않습니다.`);
+    const target = parseReviewTarget(issue.target, `reviewIssues[${index}].target`);
+    assertReviewTargetExists(parsed, target, `reviewIssues[${index}].target`);
+    const key = reviewTargetKey(target);
+    if (seen.has(key)) throw new MatchResultError(`같은 검토 대상이 중복되었습니다: ${key}`);
+    seen.add(key);
+    if (!Array.isArray(issue.reasons) || !issue.reasons.length) {
+      throw new MatchResultError(`reviewIssues[${index}].reasons가 올바르지 않습니다.`);
+    }
+    const reasons = [...new Set(issue.reasons.map((reason) => {
+      if (typeof reason !== "string" || !REVIEW_REASONS.has(reason as MatchReviewIssueReason)) {
+        throw new MatchResultError(`reviewIssues[${index}].reasons에 지원하지 않는 값이 있습니다.`);
+      }
+      return reason as MatchReviewIssueReason;
+    }))];
+    return {
+      key,
+      target,
+      reasons,
+      ...(typeof issue.detectedText === "string" ? {detectedText: text(issue.detectedText, `reviewIssues[${index}].detectedText`, 80)} : {}),
+      ...(typeof issue.selectedAssetId === "string" ? {selectedAssetId: text(issue.selectedAssetId, `reviewIssues[${index}].selectedAssetId`, 80)} : {}),
+      ...(Number.isFinite(issue.score) ? {score: Math.round(Number(issue.score))} : {}),
+      ...(issue.runnerUpGap === null ? {runnerUpGap: null} : Number.isFinite(issue.runnerUpGap) ? {runnerUpGap: Math.round(Number(issue.runnerUpGap))} : {}),
+      status: "OPEN" as const,
+      resolvedAt: null,
+    };
+  });
+}
+
 export function prepareMatchResult(
   input: ParsedMatchResultInput,
   players: PlayerProfile[],
@@ -99,9 +141,10 @@ export function createMatchResult(
   prepared: PreparedMatchResult,
   now = Date.now(),
   correctedBy: MatchResult["correctedBy"] = "ingest-api",
+  reviewIssues: MatchReviewIssue[] = [],
 ): MatchResult {
   return {
-    schemaVersion: 4,
+    schemaVersion: 5,
     matchResultId: crypto.randomUUID(),
     ingestionId: prepared.input.ingestionId,
     sourceHash: prepared.sourceHash,
@@ -115,6 +158,9 @@ export function createMatchResult(
     revision: 1,
     correctedBy,
     corrections: [],
+    reviewStatus: "PENDING_REVIEW",
+    reviewIssues,
+    reviewedAt: null,
     createdAt: now,
     updatedAt: now,
   };
@@ -201,7 +247,7 @@ function parseParticipants(value: unknown): ParsedMatchParticipant[] {
       champion: assetRef(participant.champion, `participants[${index}].champion`),
       primaryPerk: assetRef(participant.primaryPerk, `participants[${index}].primaryPerk`),
       summonerSpells: fixedAssetSlots(participant.summonerSpells, 2, `participants[${index}].summonerSpells`, false),
-      level: positiveInteger(participant.level, `participants[${index}].level`),
+      level: boundedInteger(participant.level, `participants[${index}].level`, 1, 18),
       kills: nonNegativeInteger(participant.kills, `participants[${index}].kills`),
       deaths: nonNegativeInteger(participant.deaths, `participants[${index}].deaths`),
       assists: nonNegativeInteger(participant.assists, `participants[${index}].assists`),
@@ -215,6 +261,35 @@ function parseParticipants(value: unknown): ParsedMatchParticipant[] {
   validateTeamCounts(participants);
   validateParticipantRolesAndSpells(participants);
   return participants;
+}
+
+function parseReviewTarget(value: unknown, field: string): MatchReviewTarget {
+  const target = record(value, `${field}가 올바르지 않습니다.`);
+  const team = matchTeam(target.team);
+  if (target.scope === "TEAM") {
+    if (target.field !== "ban") throw new MatchResultError(`${field}.field가 올바르지 않습니다.`);
+    return {scope: "TEAM", team, field: "ban", slot: boundedInteger(target.slot, `${field}.slot`, 0, 4)};
+  }
+  if (target.scope !== "PARTICIPANT") throw new MatchResultError(`${field}.scope가 올바르지 않습니다.`);
+  const role = matchRole(target.role, `${field}.role`);
+  const participantFields = new Set(["level", "champion", "primaryPerk", "summonerSpell", "item", "trinket", "questSlot"]);
+  if (typeof target.field !== "string" || !participantFields.has(target.field)) {
+    throw new MatchResultError(`${field}.field가 올바르지 않습니다.`);
+  }
+  const participantField = target.field as Extract<MatchReviewTarget, {scope: "PARTICIPANT"}>["field"];
+  if (participantField === "summonerSpell") return {scope: "PARTICIPANT", team, role, field: participantField, slot: boundedInteger(target.slot, `${field}.slot`, 0, 1)};
+  if (participantField === "item") return {scope: "PARTICIPANT", team, role, field: participantField, slot: boundedInteger(target.slot, `${field}.slot`, 0, 5)};
+  return {scope: "PARTICIPANT", team, role, field: participantField};
+}
+
+function assertReviewTargetExists(parsed: ParsedMatchResultInput, target: MatchReviewTarget, field: string) {
+  if (target.scope === "TEAM") {
+    if (!parsed.teamStats.some((stats) => stats.team === target.team)) throw new MatchResultError(`${field}의 팀을 찾을 수 없습니다.`);
+    return;
+  }
+  if (!parsed.participants.some((participant) => participant.team === target.team && participant.role === target.role)) {
+    throw new MatchResultError(`${field}의 참가자를 찾을 수 없습니다.`);
+  }
 }
 
 function parseTeamStats(value: unknown): MatchResultTeamStats[] {
@@ -400,6 +475,12 @@ function nonNegativeInteger(value: unknown, field: string): number {
 function positiveInteger(value: unknown, field: string): number {
   const number = nonNegativeInteger(value, field);
   if (number < 1) throw new MatchResultError(`${field} 값은 1 이상의 정수여야 합니다.`);
+  return number;
+}
+
+function boundedInteger(value: unknown, field: string, min: number, max: number): number {
+  const number = nonNegativeInteger(value, field);
+  if (number < min || number > max) throw new MatchResultError(`${field} 값은 ${min}~${max} 사이의 정수여야 합니다.`);
   return number;
 }
 

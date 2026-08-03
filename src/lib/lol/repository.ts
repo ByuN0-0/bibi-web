@@ -9,6 +9,7 @@ import type {
   TeamDraft,
   TeamSession,
 } from "@/lib/lol/types";
+import {isPublishedMatch} from "@/lib/lol/match-review";
 import type {LoginAttemptState} from "@/lib/login-rate-limit";
 import {
   syncRequestAvailability,
@@ -374,6 +375,20 @@ export async function listMatchResultsPage(offset: number, limit: number): Promi
   nextOffset: number | null;
 }> {
   const all = await listMatchResults();
+  const results = all.slice(offset, offset + limit);
+  const next = offset + results.length;
+  return {results, nextOffset: next < all.length ? next : null};
+}
+
+export async function listPublishedMatchResults(): Promise<MatchResult[]> {
+  return (await listMatchResults()).filter(isPublishedMatch);
+}
+
+export async function listPublishedMatchResultsPage(offset: number, limit: number): Promise<{
+  results: MatchResult[];
+  nextOffset: number | null;
+}> {
+  const all = await listPublishedMatchResults();
   const results = all.slice(offset, offset + limit);
   const next = offset + results.length;
   return {results, nextOffset: next < all.length ? next : null};

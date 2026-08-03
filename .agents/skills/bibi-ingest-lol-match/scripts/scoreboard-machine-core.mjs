@@ -115,6 +115,23 @@ export function parseInteger(text) {
   return normalized ? Number(normalized) : null;
 }
 
+export function selectLevelReading(readings) {
+  const parsed = readings.map((reading) => ({...reading, value: parseInteger(reading.text)}));
+  if (parsed[0] && parsed[0].value >= 1 && parsed[0].value <= 18) return {value: parsed[0].value, reviewIssue: null};
+  const borderArtifact = String(readings[0]?.text ?? "").replace(/[^0-9]/g, "").match(/^1(\d{2})$/);
+  const artifactLevel = borderArtifact ? Number(borderArtifact[1]) : null;
+  if (artifactLevel && artifactLevel >= 1 && artifactLevel <= 18) return {value: artifactLevel, reviewIssue: null};
+  const validRetries = parsed.slice(1).filter((reading) => Number.isInteger(reading.value) && reading.value >= 1 && reading.value <= 18);
+  if (validRetries.length && new Set(validRetries.map((reading) => reading.value)).size === 1) return {value: validRetries[0].value, reviewIssue: null};
+  return {
+    value: 1,
+    reviewIssue: {
+      reasons: ["LEVEL_UNRESOLVED"],
+      detectedText: readings.map((reading) => String(reading.text ?? "").trim()).filter(Boolean).join(" | ") || "판독 실패",
+    },
+  };
+}
+
 export function parseDate(text) {
   const normalized = String(text ?? "").replace(/[.\-]/g, "/").replace(/\s/g, "");
   const match = normalized.match(/(20\d{2})\/(\d{1,2})\/(\d{1,2})/);

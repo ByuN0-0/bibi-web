@@ -40,9 +40,9 @@ Vercel Hobby의 함수 실행 제한에 맞춰 웹 갱신 함수는 최대 60초
 Oracle SODA에 저장하지 않습니다.
 
 - `Authorization: Bearer <BIBI_INGEST_TOKEN>` 헤더가 반드시 필요합니다.
-- `action: "validate"`로 선수·게스트·최근 7일 내 확정 팀 연결을 먼저 확인합니다.
-- 사용자가 분석 결과를 확인한 뒤 같은 `ingestionId`와 본문으로
-  `action: "commit"`을 보내야 실제 저장됩니다.
+- `action: "validate"`는 저장 없이 스키마·선수 매핑·에셋을 확인합니다.
+- 업로드 요청은 `action: "stage"`로 검토 대기 기록을 저장하며, `commit`도 호환상 같은 동작을 합니다.
+- 검토 대기 기록은 공개 전적과 Elo에서 제외되고, 관리자가 모든 저신뢰 항목을 확인한 뒤 공개합니다.
 - 숫자는 날짜·진행 시간, 팀 K/D/A·골드·목표물 6종, 개인 레벨·K/D/A·CS·골드만 저장합니다.
 - 에셋은 챔피언, 핵심 룬, 소환사 주문, 아이템 6칸, 장신구, 퀘스트 슬롯, 밴 5칸만 저장합니다.
 - 아이콘 에셋은 `{id,name,iconPath}`로 보내며 서버가 지정된 한국어 Data Dragon 버전과 대조합니다.
@@ -54,7 +54,7 @@ Oracle SODA에 저장하지 않습니다.
 
 ```json
 {
-  "action": "validate",
+  "action": "stage",
   "ingestionId": "고유한-요청-ID",
   "playedOn": "2026-08-01",
   "winner": "RED",
@@ -119,7 +119,7 @@ Oracle SODA에 저장하지 않습니다.
 ```
 
 실제 요청에는 `participants`를 BLUE 5명, RED 5명으로 정확히 10명 포함해야
-합니다. 공개 결과는 `/lol-member?tab=history`, 관리자 연결·수정 화면은 `/lol-statics/history`에서 확인합니다.
+합니다. 공개 결과는 `/lol-member?tab=history`, 검토·수정 화면은 `/lol-statics/history/{matchResultId}/edit`에서 확인합니다. 원본 스크린샷은 저장하지 않습니다.
 
 Vercel 프로젝트에 다음 환경변수를 등록합니다. 실제 비밀번호와 비밀키는
 저장소에 커밋하지 않습니다.

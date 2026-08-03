@@ -122,6 +122,11 @@ export async function resolveDataDragonAssets(input, options = {}) {
   for (const resolution of resolutions) {
     resolution.field = resolution.field.replace(/^participants\[(\d+)]/, (_, rawIndex) => `participants[${oldToNew.get(Number(rawIndex))}]`);
   }
+  if (Array.isArray(payload.reviewIssues)) {
+    for (const issue of payload.reviewIssues) {
+      issue.field = String(issue.field).replace(/^participants\[(\d+)]/, (_, rawIndex) => `participants[${oldToNew.get(Number(rawIndex))}]`);
+    }
+  }
   if (unresolved.length) fail(`Unresolved or ambiguous assets:\n${unresolved.map((entry) => `- ${entry}`).join("\n")}`);
   return {payload, assets: resolutions, version};
 }
@@ -207,6 +212,7 @@ async function compareCrop(buffer, crop, candidates, kind, field) {
     evaluated.push({
       target,
       precisionPool,
+      hashSelected: hashShortlist[0]?.candidate ?? null,
       quality: cropQuality(precisionPool, target),
     });
   }
@@ -219,24 +225,23 @@ async function compareCrop(buffer, crop, candidates, kind, field) {
   const cleanPool = chosen?.precisionPool ?? [];
   const overlayDecisive = kind === "ban" && isDecisiveBanOverlay(chosen.overlayPool);
   const precisionPool = kind === "ban" && chosen.overlayPool?.length ? chosen.overlayPool : cleanPool;
+  const methodAgreed = Boolean(chosen?.hashSelected && cleanPool[0]?.candidate.id === chosen.hashSelected.id);
+  const overlayAgreed = kind !== "ban" || Boolean(cleanPool[0] && chosen.overlayPool?.[0]?.candidate.id === cleanPool[0].candidate.id);
   candidatePools.set(field, precisionPool);
   if (process.env.BIBI_DDRAGON_DEBUG === "1") {
     process.stderr.write(`${field} ${kind} crop=${chosen?.target.dx ?? 0},${chosen?.target.dy ?? 0} candidates: ${cleanPool.map((entry) => `${entry.candidate.name}:${entry.hashDistance}/${Math.round(entry.pixelError)}`).join(", ")}\n`);
     if (kind === "ban") process.stderr.write(`${field} ban-overlay candidates: ${chosen.overlayPool.map((entry) => `${entry.candidate.name}:${entry.hashDistance}/${Math.round(entry.pixelError)}`).join(", ")}\n`);
   }
-  const normalMatch = kind === "ban"
-    ? overlayDecisive
-    : isUniqueMatch(precisionPool, acceptanceThreshold(kind), acceptanceMargin(kind));
+  const uniqueMatch = isUniqueMatch(precisionPool, acceptanceThreshold(kind), acceptanceMargin(kind));
   const clearChampionHash = kind === "champion" && precisionPool[0]?.hashDistance <= 20
     && precisionPool[0].pixelError <= 650 && scoreGap(precisionPool) >= 35;
   const clearPerk = kind === "perk" && precisionPool[0]?.pixelError <= 750 && scoreGap(precisionPool) >= 60;
   const selected = precisionPool[0];
-  const accepted = normalMatch || clearChampionHash || clearPerk;
+  const accepted = isAcceptedAssetMatch({kind, methodAgreed, overlayAgreed, overlayDecisive, uniqueMatch, clearChampionHash, clearPerk});
   if (selected) {
     const overlaySelected = chosen.overlayPool?.[0];
-    const overlayAgreed = kind === "ban" && overlaySelected?.candidate.id === selected.candidate.id;
     const selectedOffset = kind === "ban" ? chosen.overlayOffset : chosen.target;
-    const resolution = {field, kind, selected: assetRef(selected.candidate), accepted, score: Math.round(selected.matchScore), runnerUpGap: Math.round(scoreGap(precisionPool)), cropOffset: {x: selectedOffset.dx, y: selectedOffset.dy}};
+    const resolution = {field, kind, selected: assetRef(selected.candidate), accepted, methodAgreed, score: Math.round(selected.matchScore), runnerUpGap: Math.round(scoreGap(precisionPool)), cropOffset: {x: selectedOffset.dx, y: selectedOffset.dy}};
     if (kind === "ban") {
       resolution.cleanCropOffset = {x: chosen.target.dx, y: chosen.target.dy};
       resolution.cleanSelected = cleanPool[0] ? assetRef(cleanPool[0].candidate) : null;
@@ -244,9 +249,13 @@ async function compareCrop(buffer, crop, candidates, kind, field) {
       resolution.overlayAgreed = overlayAgreed;
       resolution.overlayDecisive = overlayDecisive;
       resolution.overlayRunnerUpGap = overlaySelected ? Math.round(scoreGap(chosen.overlayPool)) : null;
-      resolution.reason = overlayDecisive
+      resolution.reason = !methodAgreed || !overlayAgreed
+        ? "extracted-ban-method-disagreement"
+        : overlayDecisive
         ? "extracted-ban-overlay-decisive"
         : "extracted-ban-overlay-low-confidence";
+    } else if (!methodAgreed) {
+      resolution.reason = "extracted-method-disagreement";
     }
     resolutions.push(resolution);
     resolutionByField.set(field, resolution);
@@ -270,6 +279,12 @@ export function isDecisiveBanOverlay(pool) {
   return Boolean(pool?.[0]
     && pool[0].pixelError <= 250
     && scoreGap(pool) >= 12);
+}
+
+export function isAcceptedAssetMatch({kind, methodAgreed, overlayAgreed = true, overlayDecisive = false, uniqueMatch = false, clearChampionHash = false, clearPerk = false}) {
+  if (!methodAgreed) return false;
+  if (kind === "ban") return overlayAgreed && overlayDecisive;
+  return uniqueMatch || clearChampionHash || clearPerk;
 }
 
 async function normalizedBanOverlayTarget(sharp, normalizedScreen, crop, offset) {
@@ -591,7 +606,7 @@ function applyUniqueTeamBans(teamIndex) {
     const resolution = resolutionByField.get(fields[index]);
     const selected = result.assignments[index];
     if (resolution?.kind === "ban" && resolution.overlaySelected) {
-      resolution.overlayAgreed = resolution.overlaySelected.id === selected.candidate?.id;
+      resolution.overlayAgreed = resolution.overlayAgreed && resolution.overlaySelected.id === selected.candidate?.id;
     }
     if (!resolution || resolution.selected?.id === selected.candidate?.id) continue;
     resolution.selected = assetRef(selected.candidate);

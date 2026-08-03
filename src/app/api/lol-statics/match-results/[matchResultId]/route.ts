@@ -5,6 +5,8 @@ import {validateDataDragonReferences} from "@/lib/lol/data-dragon";
 import {deleteMatchResult, findMatchResult, listPlayers, replaceMatchResult} from "@/lib/lol/repository";
 import type {MatchResult} from "@/lib/lol/types";
 import {rebuildInhouseRatingSnapshot} from "@/lib/lol/inhouse-rating-service";
+import {isPublishedMatch, matchReviewIssues, matchReviewStatus, reviewTargetValue} from "@/lib/lol/match-review";
+import type {MatchReviewIssue, MatchReviewIssueStatus} from "@/lib/lol/types";
 
 export async function PATCH(
   request: NextRequest,
@@ -16,12 +18,21 @@ export async function PATCH(
   const document = await findMatchResult(matchResultId);
   if (!document) return responseError("경기 결과를 찾을 수 없습니다.", 404);
   try {
-    const update = parseAdminMatchResultUpdate(await request.json(), await listPlayers());
+    const body = await request.json() as Record<string, unknown>;
+    const action = body.action === undefined ? "save" : body.action;
+    if (action !== "save" && action !== "publish") return responseError("지원하지 않는 검토 작업입니다.", 400);
+    const update = parseAdminMatchResultUpdate(body, await listPlayers());
     await validateDataDragonReferences(update);
     if (update.revision !== document.value.revision) {
       return responseError("다른 관리자가 먼저 수정했습니다. 새로고침 후 다시 시도해 주세요.", 409);
     }
     const now = Date.now();
+    const reviewIssues = resolveReviewIssues(document.value, update, body.reviewIssues, now);
+    const wasPublished = isPublishedMatch(document.value);
+    if (action === "publish" && reviewIssues.some((issue) => issue.status === "OPEN")) {
+      return responseError("모든 저신뢰 항목을 확인하거나 수정해야 공개할 수 있습니다.", 400);
+    }
+    const reviewStatus = wasPublished || action === "publish" ? "PUBLISHED" as const : matchReviewStatus(document.value);
     const result: MatchResult = {
       ...document.value,
       playedOn: update.playedOn,
@@ -40,10 +51,13 @@ export async function PATCH(
           correctedBy: "web-admin",
         },
       ],
+      reviewStatus,
+      reviewIssues,
+      reviewedAt: reviewStatus === "PUBLISHED" ? document.value.reviewedAt ?? document.value.updatedAt ?? now : null,
       updatedAt: now,
     };
     await replaceMatchResult(document, result);
-    await rebuildInhouseRatingSnapshot();
+    if (wasPublished || reviewStatus === "PUBLISHED") await rebuildInhouseRatingSnapshot();
     return NextResponse.json({result});
   } catch (error) {
     if (error instanceof MatchResultError) return responseError(error.message, error.status);
@@ -65,11 +79,38 @@ export async function DELETE(
   if (!document) return responseError("경기 결과를 찾을 수 없습니다.", 404);
   try {
     await deleteMatchResult(document);
-    await rebuildInhouseRatingSnapshot();
+    if (isPublishedMatch(document.value)) await rebuildInhouseRatingSnapshot();
     return NextResponse.json({ok: true});
   } catch {
     return responseError("경기 결과를 삭제하지 못했습니다.", 500);
   }
+}
+
+function resolveReviewIssues(
+  current: MatchResult,
+  proposed: Pick<MatchResult, "teamStats" | "participants">,
+  rawResolutions: unknown,
+  now: number,
+): MatchReviewIssue[] {
+  const issues = matchReviewIssues(current);
+  if (!issues.length) return [];
+  if (!Array.isArray(rawResolutions)) throw new MatchResultError("저신뢰 항목 확인 상태가 필요합니다.");
+  const resolutions = new Map<string, MatchReviewIssueStatus>();
+  for (const [index, value] of rawResolutions.entries()) {
+    if (!value || typeof value !== "object" || Array.isArray(value)) throw new MatchResultError(`reviewIssues[${index}]가 올바르지 않습니다.`);
+    const entry = value as Record<string, unknown>;
+    if (typeof entry.key !== "string" || !["OPEN", "CONFIRMED", "CORRECTED"].includes(String(entry.status))) {
+      throw new MatchResultError(`reviewIssues[${index}]가 올바르지 않습니다.`);
+    }
+    resolutions.set(entry.key, entry.status as MatchReviewIssueStatus);
+  }
+  return issues.map((issue) => {
+    const status = issue.status === "OPEN" ? resolutions.get(issue.key) ?? "OPEN" : issue.status;
+    if (issue.status === "OPEN" && status === "CORRECTED" && reviewTargetValue(current, issue.target) === reviewTargetValue(proposed as MatchResult, issue.target)) {
+      throw new MatchResultError(`${issue.key} 항목이 변경되지 않아 수정 완료로 처리할 수 없습니다.`);
+    }
+    return {...issue, status, resolvedAt: status === "OPEN" ? null : issue.resolvedAt ?? now};
+  });
 }
 
 function responseError(error: string, status: number) {

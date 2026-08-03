@@ -1,4 +1,5 @@
 import type {InhouseRatingSnapshot, MatchResult} from "@/lib/lol/types";
+import {isPublishedMatch} from "@/lib/lol/match-review";
 
 const INITIAL_ELO = 1500;
 const K_FACTOR = 32;
@@ -8,7 +9,7 @@ export function calculateInhouseRatings(
   now = Date.now(),
 ): InhouseRatingSnapshot {
   const ratings = new Map<string, {elo: number; matchCount: number}>();
-  const ordered = [...results].sort((left, right) =>
+  const ordered = results.filter(isPublishedMatch).sort((left, right) =>
     left.playedOn.localeCompare(right.playedOn) || left.createdAt - right.createdAt
       || left.matchResultId.localeCompare(right.matchResultId));
   let sourceMatchCount = 0;
