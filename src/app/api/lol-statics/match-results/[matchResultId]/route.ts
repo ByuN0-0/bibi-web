@@ -2,7 +2,7 @@ import {NextRequest, NextResponse} from "next/server";
 import {hasApiSession, hasSameOrigin} from "@/lib/auth-server";
 import {MatchResultError, parseAdminMatchResultUpdate} from "@/lib/lol/match-result";
 import {validateDataDragonReferences} from "@/lib/lol/data-dragon";
-import {findMatchResult, listPlayers, replaceMatchResult} from "@/lib/lol/repository";
+import {deleteMatchResult, findMatchResult, listPlayers, replaceMatchResult} from "@/lib/lol/repository";
 import type {MatchResult} from "@/lib/lol/types";
 import {rebuildInhouseRatingSnapshot} from "@/lib/lol/inhouse-rating-service";
 
@@ -51,6 +51,24 @@ export async function PATCH(
       return responseError("다른 관리자가 먼저 수정했습니다. 새로고침 후 다시 시도해 주세요.", 409);
     }
     return responseError("경기 결과를 수정하지 못했습니다.", 500);
+  }
+}
+
+export async function DELETE(
+  request: NextRequest,
+  {params}: {params: Promise<{matchResultId: string}>},
+) {
+  if (!await hasApiSession(request)) return responseError("인증이 필요합니다.", 401);
+  if (!hasSameOrigin(request)) return responseError("허용되지 않은 요청 출처입니다.", 403);
+  const {matchResultId} = await params;
+  const document = await findMatchResult(matchResultId);
+  if (!document) return responseError("경기 결과를 찾을 수 없습니다.", 404);
+  try {
+    await deleteMatchResult(document);
+    await rebuildInhouseRatingSnapshot();
+    return NextResponse.json({ok: true});
+  } catch {
+    return responseError("경기 결과를 삭제하지 못했습니다.", 500);
   }
 }
 

@@ -242,26 +242,6 @@ export type MatchResult = {
   updatedAt: number;
 };
 
-export type MatchResultDraft = Pick<
-  MatchResult,
-  "ingestionId" | "playedOn" | "winner" | "durationSeconds" | "ddragonVersion" | "teamStats" | "participants"
->;
-
-export type MatchRecognitionReview = {
-  id: string;
-  field: string;
-  kind: "ban" | "champion" | "item" | "perk" | "quest" | "spell" | "trinket";
-  selected: LolAssetRef;
-  score: number;
-  runnerUpGap: number | null;
-};
-
-export type MatchRecognitionReport = {
-  elapsedMs: number;
-  layoutConfidence: number;
-  reviews: MatchRecognitionReview[];
-};
-
 export type PublicMatchResultParticipant = Omit<MatchResultParticipant, "discordUserId">;
 
 export type PublicMatchResult = Pick<

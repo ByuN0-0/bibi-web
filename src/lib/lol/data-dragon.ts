@@ -5,6 +5,28 @@ export {dataDragonIconUrl} from "@/lib/lol/data-dragon-url";
 const DDRAGON_ORIGIN = "https://ddragon.leagueoflegends.com";
 const catalogCache = new Map<string, Promise<DataDragonCatalog>>();
 
+export const MATCH_KEYSTONE_NAMES = [
+  "폭풍전사의 포효",
+  "콩콩이 소환",
+  "죽음불꽃 손길",
+  "신비로운 유성",
+  "어둠의 수확",
+  "감전",
+  "칼날비",
+  "기민한 발놀림",
+  "치명적 속도",
+  "집중 공격",
+  "정복자",
+  "수호자",
+  "여진",
+  "착취의 손아귀",
+  "빙결 강화",
+  "선제공격",
+  "봉인 풀린 주문서",
+] as const;
+
+const normalizedMatchKeystoneNames = new Set(MATCH_KEYSTONE_NAMES.map(normalizeRuneName));
+
 type DataDragonCatalog = {
   champions: Map<string, LolAssetRef>;
   items: Map<string, LolAssetRef>;
@@ -81,7 +103,9 @@ async function fetchCatalog(version: string): Promise<DataDragonCatalog> {
         name: entry.name,
         iconPath: `img/spell/${entry.image.full}`,
       }])),
-      perks: new Map(runeTrees.flatMap((tree) => tree.slots.flatMap((slot) => slot.runes)).map((entry) => [String(entry.id), {
+      perks: new Map(runeTrees.flatMap((tree) => tree.slots.flatMap((slot) => slot.runes))
+        .filter((entry) => normalizedMatchKeystoneNames.has(normalizeRuneName(entry.name)))
+        .map((entry) => [String(entry.id), {
         id: String(entry.id),
         name: entry.name,
         iconPath: entry.icon,
@@ -95,6 +119,10 @@ async function fetchCatalog(version: string): Promise<DataDragonCatalog> {
       "DDRAGON_UNAVAILABLE",
     );
   }
+}
+
+function normalizeRuneName(name: string) {
+  return name.replace(/\s+/g, "");
 }
 
 async function fetchJson<T>(url: string): Promise<T> {

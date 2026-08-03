@@ -2,7 +2,7 @@ import {beforeEach, describe, expect, it, vi} from "vitest";
 
 vi.mock("server-only", () => ({}));
 
-import {dataDragonIconUrl, listDataDragonAssets, validateDataDragonReferences} from "@/lib/lol/data-dragon";
+import {dataDragonIconUrl, listDataDragonAssets, MATCH_KEYSTONE_NAMES, validateDataDragonReferences} from "@/lib/lol/data-dragon";
 
 const version = "16.15.1";
 const champion = {id: "Ahri", name: "아리", iconPath: "img/champion/Ahri.png"};
@@ -21,7 +21,11 @@ describe("Data Dragon references", () => {
           ? {data: {"3089": {name: "라바돈의 죽음모자", image: {full: "3089.png"}}}}
           : url.endsWith("summoner.json")
             ? {data: {SummonerFlash: {id: "SummonerFlash", name: "점멸", image: {full: "SummonerFlash.png"}, modes: ["CLASSIC"]}}}
-            : [{slots: [{runes: [{id: 8112, name: "감전", icon: perk.iconPath}]}]}];
+            : [{slots: [{runes: [
+              {id: 8112, name: "감전", icon: perk.iconPath},
+              {id: 8230, name: "폭풍전사의 포효", icon: "perk-images/Styles/Sorcery/PhaseRush/StormraidersSurgeRuneIcon2.png"},
+              {id: 8237, name: "난입", icon: "perk-images/Styles/Sorcery/PhaseRush/PhaseRush.png"},
+            ]}]}];
       return {ok: true, json: async () => body};
     }));
   });
@@ -34,11 +38,22 @@ describe("Data Dragon references", () => {
 
   it("exposes a sorted serializable asset catalog", async () => {
     await expect(listDataDragonAssets(version, "champions")).resolves.toEqual([champion]);
+    await expect(listDataDragonAssets(version, "perks")).resolves.toEqual([
+      perk,
+      {id: "8230", name: "폭풍전사의 포효", iconPath: "perk-images/Styles/Sorcery/PhaseRush/StormraidersSurgeRuneIcon2.png"},
+    ]);
+    expect(MATCH_KEYSTONE_NAMES).toHaveLength(17);
   });
 
   it("rejects mismatched names or paths", async () => {
     const invalid = payload();
     invalid.participants[0].champion = {...champion, name: "잘못된 이름"};
+    await expect(validateDataDragonReferences(invalid)).rejects.toMatchObject({code: "INVALID_DDRAGON_ASSET"});
+  });
+
+  it("rejects runes outside the supported match keystone set", async () => {
+    const invalid = payload();
+    invalid.participants[0].primaryPerk = {id: "8237", name: "난입", iconPath: "perk-images/Styles/Sorcery/PhaseRush/PhaseRush.png"};
     await expect(validateDataDragonReferences(invalid)).rejects.toMatchObject({code: "INVALID_DDRAGON_ASSET"});
   });
 

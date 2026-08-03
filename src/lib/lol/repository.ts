@@ -405,6 +405,11 @@ export async function replaceMatchResult(
   await soda.replace(COLLECTIONS.matchResults, document, result);
 }
 
+export async function deleteMatchResult(document: SodaDocument<MatchResult>) {
+  await ensureCollection(COLLECTIONS.matchResults);
+  await soda.delete(COLLECTIONS.matchResults, document);
+}
+
 export async function getInhouseRatingSnapshot(): Promise<InhouseRatingSnapshot | null> {
   await ensureCollection(COLLECTIONS.ratings);
   return (await findOne<InhouseRatingSnapshot>(COLLECTIONS.ratings, {snapshotId: "current"}))?.value ?? null;
