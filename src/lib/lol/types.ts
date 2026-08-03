@@ -76,12 +76,31 @@ export type RiotAccountProfile = {
   puuid: string | null;
   soloRank: RankInfo;
   flexRank: RankInfo;
+  recentMatches: MatchPerformance[];
   recentRoleMatches: RecentRoleMatch[];
   latestScannedMatchId?: string | null;
+  syncStatus: "UNSYNCED" | "SYNCING" | "READY" | "FAILED";
+  lastSyncStartedAt: number;
+  lastSyncedAt: number;
   syncErrorCode: string | null;
   revision: number;
   createdAt: number;
   updatedAt: number;
+};
+
+export type RiotAccountSyncControl = {
+  schemaVersion: 1;
+  controlId: "global";
+  activeAccountId: string | null;
+  lastStartedAt: number;
+  nextAllowedAt: number;
+  leaseExpiresAt: number;
+  revision: number;
+  updatedAt: number;
+};
+
+export type RiotAccountSyncRow = RiotAccountProfile & {
+  displayName: string;
 };
 
 export type PlayerProfile = {

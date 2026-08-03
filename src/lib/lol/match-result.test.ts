@@ -47,7 +47,8 @@ describe("match result ingestion", () => {
       schemaVersion: 1, accountId: "alt-1", discordUserId: "player-1", isPrimary: false,
       riotGameName: "숨겨둔부계정", riotTagLine: "KR2", puuid: "alt-puuid",
       soloRank: players[0].soloRank, flexRank: players[0].flexRank,
-      recentRoleMatches: [], syncErrorCode: null, revision: 1, createdAt: fixtureNow, updatedAt: fixtureNow,
+      recentMatches: [], recentRoleMatches: [], syncStatus: "READY", lastSyncStartedAt: fixtureNow,
+      lastSyncedAt: fixtureNow, syncErrorCode: null, revision: 1, createdAt: fixtureNow, updatedAt: fixtureNow,
     }]);
     expect(prepared.participants[0]).toEqual(expect.objectContaining({discordUserId: "player-1", guest: false}));
   });

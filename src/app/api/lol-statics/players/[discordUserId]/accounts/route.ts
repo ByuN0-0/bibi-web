@@ -1,6 +1,6 @@
 import {NextRequest, NextResponse} from "next/server";
 import {hasApiSession, hasSameOrigin} from "@/lib/auth-server";
-import {createPlayerAccount, ensurePlayerAccounts, findPlayer, listPlayerAccounts, PlayerAccountLimitError, PlayerPuuidConflictError} from "@/lib/lol/repository";
+import {createPlayerAccount, ensurePlayerAccounts, findPlayer, listNormalizedPlayerAccounts, PlayerAccountLimitError, PlayerPuuidConflictError} from "@/lib/lol/repository";
 
 export async function GET(request: NextRequest, {params}: {params: Promise<{discordUserId: string}>}) {
   if (!await hasApiSession(request)) return response("인증이 필요합니다.", 401);
@@ -20,7 +20,7 @@ export async function POST(request: NextRequest, {params}: {params: Promise<{dis
   if (!riotGameName || !riotTagLine || riotGameName.length > 80 || riotTagLine.length > 20) return response("올바른 Riot ID를 입력해 주세요.", 400);
   try {
     const account = await createPlayerAccount(discordUserId, riotGameName, riotTagLine);
-    return NextResponse.json({account, accounts: await listPlayerAccounts(discordUserId)}, {status: 201});
+    return NextResponse.json({account, accounts: await listNormalizedPlayerAccounts(discordUserId)}, {status: 201});
   } catch (error) {
     if (error instanceof PlayerAccountLimitError || error instanceof PlayerPuuidConflictError) return response(error.message, 409);
     if (error instanceof Error && error.message === "PLAYER_NOT_FOUND") return response("선수를 찾을 수 없습니다.", 404);

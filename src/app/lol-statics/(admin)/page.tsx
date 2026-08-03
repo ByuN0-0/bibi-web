@@ -1,11 +1,12 @@
 import TeamBuilder from "@/app/lol-statics/components/TeamBuilder";
-import {latestSystemStatus, listPlayers} from "@/lib/lol/repository";
+import {latestSystemStatus, listNormalizedPlayerAccounts, listPlayers} from "@/lib/lol/repository";
 import {ALGORITHM_VERSION} from "@/lib/lol/types";
 
 export default async function DashboardPage() {
-  const [players, status] = await Promise.all([listPlayers(), latestSystemStatus()]);
-  const readyCount = players.filter((player) => player.syncStatus === "READY").length;
-  const lastSync = players.reduce((latest, player) => Math.max(latest, player.lastSyncedAt), 0);
+  const [players, accounts, status] = await Promise.all([listPlayers(), listNormalizedPlayerAccounts(), latestSystemStatus()]);
+  const readyCount = accounts.filter((account) => account.syncStatus === "READY").length;
+  const syncedAccounts = accounts.filter((account) => account.lastSyncedAt > 0);
+  const oldestSync = syncedAccounts.length ? Math.min(...syncedAccounts.map((account) => account.lastSyncedAt)) : 0;
   const heartbeatFresh = !!status && Date.now() - status.heartbeatAt < 3 * 60 * 1000;
   const algorithmCompatible = status?.algorithmVersion === ALGORITHM_VERSION;
   const botStatus = !heartbeatFresh ? "확인 필요" : algorithmCompatible ? "정상" : "버전 다름";
@@ -20,10 +21,10 @@ export default async function DashboardPage() {
         <p className="mt-3 text-sm leading-6 text-[var(--muted)]">선수 10명을 고르면 최근 전적과 포지션 선호, 최근 같은 팀 기록을 함께 반영합니다.</p>
       </div>
       <section className="mb-8 grid gap-4 sm:grid-cols-2 xl:grid-cols-4">
-        <StatusCard label="등록 선수" value={`${players.length}명`} detail={`동기화 완료 ${readyCount}명`} />
+        <StatusCard label="등록 선수" value={`${players.length}명`} detail={`Riot 계정 ${accounts.length}개`} />
         <StatusCard label="Java 봇" value={botStatus} detail={botStatusDetail} tone={heartbeatFresh && algorithmCompatible ? "good" : "warn"} />
-        <StatusCard label="마지막 선수 동기화" value={lastSync ? formatDate(lastSync) : "대기 중"} detail={lastSync ? formatTime(lastSync) : "완료 기록 없음"} />
-        <StatusCard label="전체 동기화 실패" value={`${status?.failedSyncCount ?? 0}건`} detail={status?.lastFullSyncAt ? `전체 갱신 ${formatTime(status.lastFullSyncAt)}` : "전체 갱신 대기"} tone={status?.failedSyncCount ? "warn" : "good"} />
+        <StatusCard label="계정 갱신 완료" value={`${readyCount}/${accounts.length}개`} detail={`${accounts.length - readyCount}개 확인 필요`} tone={readyCount === accounts.length ? "good" : "warn"} />
+        <StatusCard label="가장 오래된 갱신" value={oldestSync ? formatDate(oldestSync) : "기록 없음"} detail={oldestSync ? formatTime(oldestSync) : "전적 갱신 탭에서 시작"} />
       </section>
       <TeamBuilder players={players} />
     </div>

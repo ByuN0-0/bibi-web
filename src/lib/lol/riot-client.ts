@@ -1,11 +1,11 @@
 import "server-only";
 import {getRiotServerEnv} from "@/lib/server-env";
-import {calculateRoleStats} from "@/lib/lol/rating-calculator";
 import {selectRiotAccountLookup} from "@/lib/lol/riot-account";
 import {
   type MatchPerformance,
-  type PlayerProfile,
   type RankInfo,
+  type RecentRoleMatch,
+  type RiotAccountProfile,
   type Role,
 } from "@/lib/lol/types";
 
@@ -25,16 +25,18 @@ export class RiotApiError extends Error {
   }
 }
 
-export type RiotSyncData = Pick<
-  PlayerProfile,
-  "riotGameName" | "riotTagLine" | "puuid" | "summonerId" | "soloRank" | "flexRank" | "recentMatches" | "roleStats"
+export type RiotAccountSyncData = Pick<
+  RiotAccountProfile,
+  "riotGameName" | "riotTagLine" | "puuid" | "soloRank" | "flexRank" | "recentMatches" | "recentRoleMatches" | "latestScannedMatchId"
 >;
 
-export async function loadRiotProfile(player: PlayerProfile): Promise<RiotSyncData> {
+export async function loadRiotAccountProfile(
+  accountProfile: Pick<RiotAccountProfile, "riotGameName" | "riotTagLine" | "puuid">,
+): Promise<RiotAccountSyncData> {
   const client = new RiotClient();
-  const lookup = selectRiotAccountLookup(player);
+  const lookup = selectRiotAccountLookup(accountProfile);
   const account = lookup.kind === "PUUID"
-    ? await client.resolveAccountByPuuid(lookup.puuid, player.riotGameName, player.riotTagLine)
+    ? await client.resolveAccountByPuuid(lookup.puuid, accountProfile.riotGameName, accountProfile.riotTagLine)
     : await client.resolveAccountByRiotId(lookup.gameName, lookup.tagLine);
   const [entries, matches] = await Promise.all([
     client.getLeagueEntries(account.puuid),
@@ -50,17 +52,23 @@ export async function loadRiotProfile(player: PlayerProfile): Promise<RiotSyncDa
     const performance = parsePerformance(account.puuid, match, timeline);
     if (performance) recentMatches.push(performance);
   }
-  const soloRank = ranks.get("RANKED_SOLO_5x5") ?? unranked();
-  const flexRank = ranks.get("RANKED_FLEX_SR") ?? unranked();
+  const recentRoleMatches: RecentRoleMatch[] = recentMatches.map(({matchId, playedAt, queueId, role}) => ({
+    matchId,
+    playedAt,
+    queueId: queueId ?? 0,
+    role,
+  }));
   return {
     riotGameName: account.gameName,
     riotTagLine: account.tagLine,
     puuid: account.puuid,
-    summonerId: player.summonerId,
-    soloRank,
-    flexRank,
+    soloRank: ranks.get("RANKED_SOLO_5x5") ?? unranked(),
+    flexRank: ranks.get("RANKED_FLEX_SR") ?? unranked(),
     recentMatches,
-    roleStats: calculateRoleStats(soloRank, flexRank, recentMatches),
+    recentRoleMatches,
+    latestScannedMatchId: matches.length
+      ? stringAt(objectAt(matches[0], "metadata"), "matchId") || null
+      : null,
   };
 }
 
@@ -237,8 +245,9 @@ async function throttle() {
 }
 
 async function retryDelay(retryAfter: string | null, attempt: number) {
-  const seconds = Number(retryAfter ?? attempt);
-  await delay(Math.min(Number.isFinite(seconds) ? seconds : attempt, 10) * 1000);
+  const parsed = Number(retryAfter ?? attempt);
+  const seconds = Number.isFinite(parsed) && parsed >= 0 ? parsed : attempt;
+  await delay(seconds * 1000);
 }
 
 function roleFromRiot(value: string): Role | null {

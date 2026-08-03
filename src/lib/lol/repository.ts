@@ -5,16 +5,13 @@ import type {
   InhouseRatingSnapshot,
   PlayerProfile,
   RiotAccountProfile,
+  RiotAccountSyncControl,
   SystemStatus,
   TeamDraft,
   TeamSession,
 } from "@/lib/lol/types";
 import {isPublishedMatch} from "@/lib/lol/match-review";
 import type {LoginAttemptState} from "@/lib/login-rate-limit";
-import {
-  syncRequestAvailability,
-  type SyncRequestResult,
-} from "@/lib/lol/player-sync";
 
 export const COLLECTIONS = {
   players: "bibi_lol_players",
@@ -25,6 +22,7 @@ export const COLLECTIONS = {
   ratings: "bibi_lol_inhouse_ratings",
   status: "bibi_lol_system_status",
   loginAttempts: "bibi_web_login_attempts",
+  accountSyncControl: "bibi_lol_account_sync_control",
 } as const;
 
 export class PlayerPuuidConflictError extends Error {
@@ -105,10 +103,10 @@ export async function listPlayerAccounts(discordUserId?: string): Promise<RiotAc
 
 export async function ensurePlayerAccounts(player: PlayerProfile): Promise<RiotAccountProfile[]> {
   const accounts = await listPlayerAccounts(player.discordUserId);
-  if (accounts.length) return accounts;
+  if (accounts.length) return accounts.map((account) => normalizePlayerAccount(account, player));
   const now = Date.now();
   const account: RiotAccountProfile = {
-    schemaVersion: 1,
+    schemaVersion: 2,
     accountId: crypto.randomUUID(),
     discordUserId: player.discordUserId,
     isPrimary: true,
@@ -117,8 +115,12 @@ export async function ensurePlayerAccounts(player: PlayerProfile): Promise<RiotA
     puuid: player.puuid,
     soloRank: player.soloRank ?? unranked(),
     flexRank: player.flexRank ?? unranked(),
+    recentMatches: player.recentMatches ?? [],
     recentRoleMatches: [],
     latestScannedMatchId: null,
+    syncStatus: player.puuid && player.lastSyncedAt > 0 ? "READY" : "UNSYNCED",
+    lastSyncStartedAt: player.lastSyncStartedAt || 0,
+    lastSyncedAt: player.puuid ? player.lastSyncedAt || 0 : 0,
     syncErrorCode: player.syncErrorCode,
     revision: 1,
     createdAt: player.createdAt || now,
@@ -148,7 +150,7 @@ export async function createPlayerAccount(
   if (duplicateIdentity) throw new PlayerPuuidConflictError();
   const now = Date.now();
   const account: RiotAccountProfile = {
-    schemaVersion: 1,
+    schemaVersion: 2,
     accountId: crypto.randomUUID(),
     discordUserId,
     isPrimary: false,
@@ -157,16 +159,18 @@ export async function createPlayerAccount(
     puuid: null,
     soloRank: unranked(),
     flexRank: unranked(),
+    recentMatches: [],
     recentRoleMatches: [],
     latestScannedMatchId: null,
-    syncErrorCode: null,
+    syncStatus: "UNSYNCED",
+    lastSyncStartedAt: 0,
+    lastSyncedAt: 0,
+    syncErrorCode: "SYNC_REQUIRED",
     revision: 1,
     createdAt: now,
     updatedAt: now,
   };
   await soda.insert(COLLECTIONS.accounts, account);
-  await savePlayer({...playerDocument.value, syncStatus: "REQUESTED", syncRequestedAt: now,
-    revision: playerDocument.value.revision + 1, updatedAt: now});
   return account;
 }
 
@@ -203,9 +207,13 @@ export async function updatePrimaryPlayerAccount(
     puuid: identityChanged ? null : primary.puuid,
     soloRank: identityChanged ? unranked() : primary.soloRank,
     flexRank: identityChanged ? unranked() : primary.flexRank,
+    recentMatches: identityChanged ? [] : primary.recentMatches,
     recentRoleMatches: identityChanged ? [] : primary.recentRoleMatches,
     latestScannedMatchId: identityChanged ? null : primary.latestScannedMatchId ?? null,
-    syncErrorCode: null,
+    syncStatus: identityChanged ? "UNSYNCED" : primary.syncStatus,
+    lastSyncStartedAt: identityChanged ? 0 : primary.lastSyncStartedAt,
+    lastSyncedAt: identityChanged ? 0 : primary.lastSyncedAt,
+    syncErrorCode: identityChanged ? "SYNC_REQUIRED" : primary.syncErrorCode,
     revision: primary.revision + 1,
     updatedAt: Date.now(),
   });
@@ -219,107 +227,80 @@ export async function deletePlayerAccount(discordUserId: string, accountId: stri
   if (!target || !document) throw new Error("ACCOUNT_NOT_FOUND");
   await soda.delete(COLLECTIONS.accounts, document);
   if (target.isPrimary) await setPrimaryPlayerAccount(discordUserId, accounts.find((account) => account.accountId !== accountId)!.accountId);
-  const player = await findPlayer(discordUserId);
-  if (player) await savePlayer({...player.value, syncStatus: "REQUESTED", syncRequestedAt: Date.now(),
-    revision: player.value.revision + 1, updatedAt: Date.now()});
 }
 
-export async function requestPlayerSync(discordUserId: string, now = Date.now()): Promise<SyncRequestResult> {
-  for (let attempt = 0; attempt < 3; attempt += 1) {
-    const document = await findPlayer(discordUserId);
-    if (!document) return {discordUserId, status: "NOT_FOUND"};
-    const availability = syncRequestAvailability(document.value, now);
-    if (availability.status !== "ALLOWED") return {discordUserId, ...availability};
-    try {
-      await soda.replace(COLLECTIONS.players, document, {...document.value, syncStatus: "REQUESTED",
-        syncRequestedAt: now, syncErrorCode: null, revision: document.value.revision + 1, updatedAt: now});
-      return {discordUserId, status: "REQUESTED"} as SyncRequestResult;
-    } catch (error) {
-      if (!(error instanceof Error) || error.message !== "SODA_CONFLICT" || attempt === 2) throw error;
-    }
+export async function listNormalizedPlayerAccounts(discordUserId?: string): Promise<RiotAccountProfile[]> {
+  const [accounts, players] = await Promise.all([listPlayerAccounts(discordUserId), listPlayers()]);
+  const byPlayer = new Map(players.map((player) => [player.discordUserId, player]));
+  return accounts.map((account) => normalizePlayerAccount(account, byPlayer.get(account.discordUserId)));
+}
+
+export async function migratePlayerAccounts() {
+  const [accounts, players] = await Promise.all([listPlayerAccounts(), listPlayers()]);
+  const byPlayer = new Map(players.map((player) => [player.discordUserId, player]));
+  for (const account of accounts) {
+    if (account.schemaVersion >= 2 && account.recentMatches && account.syncStatus
+        && account.lastSyncStartedAt !== undefined && account.lastSyncedAt !== undefined) continue;
+    const document = await findPlayerAccount(account.accountId);
+    if (!document) continue;
+    const normalized = normalizePlayerAccount(account, byPlayer.get(account.discordUserId));
+    await soda.replace(COLLECTIONS.accounts, document, {
+      ...normalized,
+      revision: normalized.revision + 1,
+    });
   }
-  return {discordUserId, status: "CONFLICT"};
 }
 
-export async function claimPlayerWebSync(
-  discordUserId: string,
-  now = Date.now(),
-): Promise<{player: PlayerProfile; result?: never} | {player?: never; result: SyncRequestResult}> {
-  for (let attempt = 0; attempt < 3; attempt += 1) {
-    const document = await findPlayer(discordUserId);
-    if (!document) return {result: {discordUserId, status: "NOT_FOUND"}};
-    const availability = syncRequestAvailability(document.value, now);
-    if (availability.status !== "ALLOWED") {
-      return {result: {discordUserId, ...availability}};
-    }
-    const syncing: PlayerProfile = {
-      ...document.value,
-      syncStatus: "SYNCING",
-      syncRequestedAt: now,
-      lastSyncStartedAt: now,
-      syncErrorCode: null,
-      revision: document.value.revision + 1,
-      updatedAt: now,
-    };
-    try {
-      await soda.replace(COLLECTIONS.players, document, syncing);
-      return {player: syncing};
-    } catch (error) {
-      if (!(error instanceof Error) || error.message !== "SODA_CONFLICT" || attempt === 2) {
-        throw error;
-      }
-    }
-  }
-  return {result: {discordUserId, status: "CONFLICT"}};
+export async function replacePlayerAccount(account: RiotAccountProfile) {
+  const document = await findPlayerAccount(account.accountId);
+  if (!document) throw new Error("ACCOUNT_NOT_FOUND");
+  if (document.value.revision + 1 !== account.revision) throw new Error("SODA_CONFLICT");
+  await soda.replace(COLLECTIONS.accounts, document, account);
 }
 
-export async function completePlayerWebSync(
-  discordUserId: string,
-  claimRevision: number,
-  data: Pick<PlayerProfile, "riotGameName" | "riotTagLine" | "puuid" | "summonerId" | "soloRank" | "flexRank" | "recentMatches" | "roleStats">,
-  now = Date.now(),
+export async function getAccountSyncControlDocument() {
+  await ensureCollection(COLLECTIONS.accountSyncControl);
+  const controls = (await soda.query<RiotAccountSyncControl>(COLLECTIONS.accountSyncControl, {controlId: "global"}))
+    .sort((left, right) => left.id.localeCompare(right.id));
+  if (controls.length) return controls[0];
+  const now = Date.now();
+  await soda.insert(COLLECTIONS.accountSyncControl, {
+    schemaVersion: 1,
+    controlId: "global",
+    activeAccountId: null,
+    lastStartedAt: 0,
+    nextAllowedAt: 0,
+    leaseExpiresAt: 0,
+    revision: 1,
+    updatedAt: now,
+  } satisfies RiotAccountSyncControl);
+  const created = (await soda.query<RiotAccountSyncControl>(COLLECTIONS.accountSyncControl, {controlId: "global"}))
+    .sort((left, right) => left.id.localeCompare(right.id))[0];
+  if (!created) throw new Error("SYNC_CONTROL_INITIALIZATION_FAILED");
+  return created;
+}
+
+export async function replaceAccountSyncControl(
+  document: SodaDocument<RiotAccountSyncControl>,
+  control: RiotAccountSyncControl,
 ) {
-  const document = await findPlayer(discordUserId);
-  if (!document || document.value.revision !== claimRevision || document.value.syncStatus !== "SYNCING") {
-    return null;
-  }
-  if (data.puuid) {
-    const duplicate = (await soda.query<PlayerProfile>(COLLECTIONS.players, {puuid: data.puuid}))
-      .some((candidate) => candidate.value.discordUserId !== discordUserId);
-    if (duplicate) throw new PlayerPuuidConflictError();
-  }
-  const synced: PlayerProfile = {
-    ...document.value,
-    ...data,
+  await soda.replace(COLLECTIONS.accountSyncControl, document, control);
+}
+
+export function normalizePlayerAccount(account: RiotAccountProfile, player?: PlayerProfile): RiotAccountProfile {
+  const syncedAt = account.lastSyncedAt ?? (account.puuid ? player?.lastSyncedAt ?? 0 : 0);
+  const status = account.syncStatus
+    ?? (account.syncErrorCode ? "FAILED" : account.puuid && syncedAt > 0 ? "READY" : "UNSYNCED");
+  return {
+    ...account,
     schemaVersion: 2,
-    syncStatus: "READY",
-    lastSyncedAt: now,
-    syncErrorCode: null,
-    revision: document.value.revision + 1,
-    updatedAt: now,
+    recentMatches: account.recentMatches ?? (account.isPrimary ? player?.recentMatches ?? [] : []),
+    recentRoleMatches: account.recentRoleMatches ?? [],
+    syncStatus: status,
+    lastSyncStartedAt: account.lastSyncStartedAt ?? (account.puuid ? player?.lastSyncStartedAt ?? 0 : 0),
+    lastSyncedAt: syncedAt,
+    syncErrorCode: status === "UNSYNCED" ? account.syncErrorCode ?? "SYNC_REQUIRED" : account.syncErrorCode,
   };
-  await soda.replace(COLLECTIONS.players, document, synced);
-  return synced;
-}
-
-export async function failPlayerWebSync(
-  discordUserId: string,
-  claimRevision: number,
-  errorCode: string,
-  now = Date.now(),
-) {
-  const document = await findPlayer(discordUserId);
-  if (!document || document.value.revision !== claimRevision || document.value.syncStatus !== "SYNCING") {
-    return false;
-  }
-  await soda.replace(COLLECTIONS.players, document, {
-    ...document.value,
-    syncStatus: "FAILED",
-    syncErrorCode: errorCode,
-    revision: document.value.revision + 1,
-    updatedAt: now,
-  } satisfies PlayerProfile);
-  return true;
 }
 
 export async function deletePlayer(discordUserId: string) {
