@@ -90,10 +90,10 @@ export default function PlayerManager({initialPlayers}: {initialPlayers: PlayerP
     try {
       const response = await fetch("/api/lol-statics/players/sync", {method: "POST", headers: {"Content-Type": "application/json"}, body: JSON.stringify({discordUserId})});
       const result = await response.json() as {error?: string; retryAt?: number};
-      setToast(response.ok ? "전적 갱신을 요청했습니다. 완료되면 자동으로 반영됩니다." : result.retryAt ? `${result.error} ${formatDateTime(result.retryAt)} 이후 다시 시도해 주세요.` : result.error ?? "전적 갱신을 요청하지 못했습니다.");
+      setToast(response.ok ? "웹 서버에서 전적 갱신을 완료했습니다." : result.retryAt ? `${result.error} ${formatDateTime(result.retryAt)} 이후 다시 시도해 주세요.` : result.error ?? "전적 갱신을 완료하지 못했습니다.");
       await reload();
     } catch {
-      if (announce) setToast("전적 갱신을 요청하지 못했습니다.");
+      if (announce) setToast("전적 갱신을 완료하지 못했습니다.");
       await reload();
     } finally {
       setPendingAction(null);
