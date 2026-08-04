@@ -98,7 +98,7 @@ export function makeSession(players = makePlayers(), sessionId = "session-1"): T
     offRole: false,
     lowConfidence: false,
   }));
-  return {schemaVersion: 1, sessionId, hostDiscordUserId: "web-admin", composition: {algorithmVersion: "team-balancing-v3", signature: `signature-${sessionId}`, blue: assignments.slice(0, 5), red: assignments.slice(5), cost: 0, teamGap: 0, maxLaneGap: 0, balanceGrade: "A"}, confirmedAt: fixtureNow - 60_000};
+  return {schemaVersion: 1, sessionId, hostDiscordUserId: "web-admin", composition: {algorithmVersion: "team-balancing-v4", signature: `signature-${sessionId}`, blue: assignments.slice(0, 5), red: assignments.slice(5), cost: 0, teamGap: 0, maxLaneGap: 0, balanceGrade: "A"}, confirmedAt: fixtureNow - 60_000};
 }
 
 export function makeStoredResult(): MatchResult {

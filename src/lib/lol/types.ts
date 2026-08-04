@@ -1,6 +1,7 @@
-export const ALGORITHM_VERSION = "team-balancing-v3";
+export const ALGORITHM_VERSION = "team-balancing-v4";
 export const ROLES = ["TOP", "JUNGLE", "MIDDLE", "BOTTOM", "UTILITY"] as const;
 export type Role = (typeof ROLES)[number];
+export type RolePreferences = Record<Role, number>;
 export const MATCH_TEAMS = ["BLUE", "RED"] as const;
 export type MatchTeam = (typeof MATCH_TEAMS)[number];
 
@@ -113,6 +114,7 @@ export type PlayerProfile = {
   summonerId: string | null;
   primaryRole: Role;
   secondaryRole: Role;
+  rolePreferences?: RolePreferences;
   soloRank: RankInfo;
   flexRank: RankInfo;
   recentMatches: MatchPerformance[];
@@ -170,12 +172,28 @@ export type TeamComposition = {
   balanceGrade: string;
 };
 
+export type RoleLock = {
+  discordUserId: string;
+  role: Role;
+};
+
+export type SameTeamPair = {
+  firstDiscordUserId: string;
+  secondDiscordUserId: string;
+};
+
+export type TeamConstraints = {
+  roleLocks: RoleLock[];
+  sameTeamPairs: SameTeamPair[];
+};
+
 export type TeamDraft = {
   schemaVersion: number;
   draftId: string;
   hostDiscordUserId: string;
   selectedDiscordUserIds: string[];
   excludedSignatures: string[];
+  constraints?: TeamConstraints;
   composition: TeamComposition | null;
   status: "DRAFT" | "CONFIRMED";
   expiresAt: number;

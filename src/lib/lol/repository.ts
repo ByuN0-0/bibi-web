@@ -11,6 +11,7 @@ import type {
   TeamSession,
 } from "@/lib/lol/types";
 import {isPublishedMatch} from "@/lib/lol/match-review";
+import {normalizePlayerProfile} from "@/lib/lol/role-preferences";
 import type {LoginAttemptState} from "@/lib/login-rate-limit";
 
 export const COLLECTIONS = {
@@ -77,13 +78,14 @@ async function upsert<T>(
 export async function listPlayers(): Promise<PlayerProfile[]> {
   await ensureCollection(COLLECTIONS.players);
   return (await soda.list<PlayerProfile>(COLLECTIONS.players))
-    .map((document) => document.value)
+    .map((document) => normalizePlayerProfile(document.value))
     .sort((left, right) => left.displayName.localeCompare(right.displayName, "ko"));
 }
 
 export async function findPlayer(discordUserId: string) {
   await ensureCollection(COLLECTIONS.players);
-  return findOne<PlayerProfile>(COLLECTIONS.players, {discordUserId});
+  const document = await findOne<PlayerProfile>(COLLECTIONS.players, {discordUserId});
+  return document ? {...document, value: normalizePlayerProfile(document.value)} : null;
 }
 
 export async function savePlayer(profile: PlayerProfile) {
@@ -330,13 +332,14 @@ function hasPlayer(session: TeamSession, discordUserId: string) {
 
 export async function listRecentSessions(
   limit = 5,
-  algorithmVersion?: string,
+  algorithmVersion?: string | string[],
 ): Promise<TeamSession[]> {
   await ensureCollection(COLLECTIONS.sessions);
   return (await soda.list<TeamSession>(COLLECTIONS.sessions))
     .map((document) => document.value)
-    .filter((session) =>
-      !algorithmVersion || session.composition.algorithmVersion === algorithmVersion)
+    .filter((session) => !algorithmVersion || (Array.isArray(algorithmVersion)
+      ? algorithmVersion.includes(session.composition.algorithmVersion)
+      : session.composition.algorithmVersion === algorithmVersion))
     .sort((left, right) => right.confirmedAt - left.confirmedAt)
     .slice(0, limit);
 }

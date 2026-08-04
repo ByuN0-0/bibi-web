@@ -27,14 +27,14 @@ describe("team balance guide", () => {
       {grade: "균형", rule: "전체 팀 차이 6점 이하 · 최대 라인 차이 18점 이하"},
       {grade: "보통", rule: "위 조건을 만족하는 조합이 없을 때"},
     ]);
-    expect(OFF_ROLE_DESCRIPTION).toContain("주 포지션과 부 포지션이 아닌");
+    expect(OFF_ROLE_DESCRIPTION).toContain("선호도 0%");
     expect(LOW_CONFIDENCE_DESCRIPTION).toContain("60% 미만");
   });
 
   it("returns a warning that matches the badges in the composition", () => {
     expect(teamAssignmentWarning([{offRole: false, lowConfidence: false}])).toBeNull();
-    expect(teamAssignmentWarning([{offRole: true, lowConfidence: false}])).toContain("주·부 포지션 밖");
+    expect(teamAssignmentWarning([{offRole: true, lowConfidence: false}])).toContain("선호도 0%");
     expect(teamAssignmentWarning([{offRole: false, lowConfidence: true}])).toContain("신뢰도가 60% 미만");
-    expect(teamAssignmentWarning([{offRole: true, lowConfidence: true}])).toContain("주·부 포지션 밖 배정과 신뢰도 60% 미만");
+    expect(teamAssignmentWarning([{offRole: true, lowConfidence: true}])).toContain("선호도 0% 라인 배정과 신뢰도 60% 미만");
   });
 });

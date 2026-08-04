@@ -211,14 +211,14 @@ export default function TeamBalancePage() {
           </SectionIntro>
 
           <div className="mt-9 grid gap-4 md:grid-cols-3">
-            <DarkStep number="1" title="오프롤 최소화">먼저 주·부 포지션 밖에 배정되는 선수 수의 최솟값을 구합니다.</DarkStep>
+            <DarkStep number="1" title="강한 비선호 최소화">먼저 선호도 0% 라인에 배정되는 선수 수의 최솟값을 구합니다.</DarkStep>
             <DarkStep number="2" title="전력 차이 계산">전체 팀과 맞라인의 포지션별 실력 신호 차이를 계산합니다.</DarkStep>
             <DarkStep number="3" title="상위 후보 추출">낮은 비용의 후보 20개 안에서 더 좋은 조합에 높은 확률을 줍니다.</DarkStep>
           </div>
 
           <div className="mt-5 rounded-2xl border border-white/15 bg-white/[0.06] p-5 sm:p-8">
             <div className="grid gap-7 lg:grid-cols-[0.8fr_1.2fr] lg:items-center">
-              <div><p className="text-xs font-bold uppercase tracking-[0.12em] text-[#ff9db3]">Objective function</p><h3 className="mt-2 text-2xl font-bold">불균형 비용 J</h3><p className="mt-3 text-sm leading-6 text-[#bdbdbd]">값이 0에 가까울수록 좋은 조합입니다. 오프롤 최소 인원 조건을 먼저 만족한 후보끼리 이 비용을 비교합니다.</p><Formula dark className="mt-4" latex={String.raw`J=0.35G+0.30L+0.15M+0.15P+0.05R`} /></div>
+              <div><p className="text-xs font-bold uppercase tracking-[0.12em] text-[#ff9db3]">Objective function</p><h3 className="mt-2 text-2xl font-bold">불균형 비용 J</h3><p className="mt-3 text-sm leading-6 text-[#bdbdbd]">값이 0에 가까울수록 좋은 조합입니다. 선호도 0% 라인 배정을 먼저 최소화한 후보끼리 이 비용을 비교합니다.</p><Formula dark className="mt-4" latex={String.raw`J=0.35G+0.30L+0.15M+0.15P+0.05R`} /></div>
               <div className="grid gap-2 sm:grid-cols-2">
                 {BALANCE_FORMULA_ITEMS.map((item) => <div key={item.label} className="flex items-center gap-3 rounded-xl bg-white/[0.07] px-4 py-3"><span className="min-w-12 rounded-lg bg-[#ffecf1] px-2 py-1 text-center text-xs font-bold text-[var(--primary)]">{Math.round(item.weight * 100)}%</span><span className="text-sm">{item.label}</span></div>)}
               </div>
@@ -227,7 +227,7 @@ export default function TeamBalancePage() {
               <MathDefinition symbol="G" latex={String.raw`\frac{|\sum_r S_{B,r}-\sum_r S_{R,r}|}{5}`} />
               <MathDefinition symbol="L" latex={String.raw`\frac{\sum_r|S_{B,r}-S_{R,r}|}{5}`} />
               <MathDefinition symbol="M" latex={String.raw`\max_r|S_{B,r}-S_{R,r}|`} />
-              <MathDefinition symbol="P" label="평균 포지션 페널티" />
+              <MathDefinition symbol="P" latex={String.raw`\frac{1}{10}\sum_i(1-p_{i,r_i}/100)`} />
               <MathDefinition symbol="R" label="같은 팀 반복도" />
             </div>
           </div>

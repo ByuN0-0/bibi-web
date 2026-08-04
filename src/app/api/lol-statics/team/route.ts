@@ -10,6 +10,7 @@ import {
   TeamGenerationError,
 } from "@/lib/lol/team-generator";
 import {ALGORITHM_VERSION, type TeamDraft} from "@/lib/lol/types";
+import {emptyTeamConstraints, parseTeamConstraints} from "@/lib/lol/team-constraints";
 
 export const maxDuration = 60;
 
@@ -17,6 +18,7 @@ type RequestBody = {
   action?: "generate" | "reroll" | "confirm";
   selectedDiscordUserIds?: string[];
   draftId?: string;
+  constraints?: unknown;
 };
 
 export async function POST(request: NextRequest) {
@@ -45,16 +47,21 @@ async function generate(body: RequestBody) {
   const selected = body.action === "reroll"
     ? previous!.value.selectedDiscordUserIds
     : body.selectedDiscordUserIds ?? [];
+  const constraintsInput = body.action === "reroll"
+    ? previous!.value.constraints ?? emptyTeamConstraints()
+    : body.constraints;
+  const constraints = parseTeamConstraints(constraintsInput, selected);
   const excluded = new Set(previous?.value.excludedSignatures ?? []);
-  const composition = await generateTeamComposition(selected, [...excluded]);
+  const composition = await generateTeamComposition(selected, [...excluded], constraints);
   excluded.add(composition.signature);
   const now = Date.now();
   const draft: TeamDraft = {
-    schemaVersion: 1,
+    schemaVersion: 2,
     draftId: previous?.value.draftId ?? crypto.randomUUID(),
     hostDiscordUserId: "web-admin",
     selectedDiscordUserIds: selected,
     excludedSignatures: [...excluded],
+    constraints,
     composition,
     status: "DRAFT",
     expiresAt: now + 2 * 60 * 60 * 1000,

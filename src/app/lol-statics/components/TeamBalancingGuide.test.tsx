@@ -8,10 +8,10 @@ describe("TeamBalancingGuide", () => {
     const markup = renderToStaticMarkup(<TeamBalancingGuide id="guide" />);
 
     expect(markup).toContain("팀은 이렇게 편성돼요");
-    expect(markup).toContain("오프롤 인원이 가장 적은 조합");
+    expect(markup).toContain("선호도 0% 라인 배정이 가장 적은 조합");
     expect(markup).toContain("전체 팀 평균 실력 차이");
     expect(markup).toContain("최근 10번의 확정 편성");
-    expect(markup).toContain("주 포지션 0, 부 포지션 0.25");
+    expect(markup).toContain("1 - 선호도/100");
     expect(markup).toContain("낮은 신뢰도");
     expect(markup).toContain("대략 8판 미만");
     expect(markup).toContain("전체 계산 원리 보기");

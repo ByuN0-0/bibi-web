@@ -1,5 +1,5 @@
 {
-  "algorithmVersion": "team-balancing-v3",
+  "algorithmVersion": "team-balancing-v4",
   "seed": 20260802,
   "expectedSignature": "1001-1003-1006-1007-1010|1002-1004-1005-1008-1009",
   "players": [

@@ -17,7 +17,8 @@ import {
   toggleRosterPlayer,
 } from "@/lib/lol/recent-roster";
 import {formatTeamCompositionText} from "@/lib/lol/team-display";
-import {ROLE_LABEL, type PlayerProfile, type TeamAssignment, type TeamDraft} from "@/lib/lol/types";
+import {ROLE_LABEL, ROLES, type PlayerProfile, type Role, type TeamAssignment, type TeamConstraints, type TeamDraft} from "@/lib/lol/types";
+import {emptyTeamConstraints} from "@/lib/lol/team-constraints";
 
 type TeamBuilderProps = {
   players: PlayerProfile[];
@@ -34,6 +35,7 @@ export default function TeamBuilder({
   const [recentRoster, setRecentRoster] = useState<string[] | null>(null);
   const [rosterNotice, setRosterNotice] = useState("");
   const [draft, setDraft] = useState<TeamDraft | null>(null);
+  const [constraints, setConstraints] = useState<TeamConstraints>(() => emptyTeamConstraints());
   const [pending, setPending] = useState(false);
   const [error, setError] = useState("");
   const [mobileListCollapsed, setMobileListCollapsed] = useState(false);
@@ -75,6 +77,7 @@ export default function TeamBuilder({
     if (next === selected) return;
     setSelected(next);
     setDraft(null);
+    setConstraints(emptyTeamConstraints());
     setGuideOpen(false);
     setError("");
     setRosterNotice("");
@@ -83,6 +86,7 @@ export default function TeamBuilder({
   function clearSelection() {
     setSelected([]);
     setDraft(null);
+    setConstraints(emptyTeamConstraints());
     setGuideOpen(false);
     setError("");
     setRosterNotice("");
@@ -93,6 +97,7 @@ export default function TeamBuilder({
     if (!recentRoster) return;
     setSelected([...recentRoster]);
     setDraft(null);
+    setConstraints(emptyTeamConstraints());
     setGuideOpen(false);
     setError("");
     setRosterNotice("최근 편성 10명을 불러왔습니다.");
@@ -120,10 +125,12 @@ export default function TeamBuilder({
         body: JSON.stringify(publicMode ? {
           selectedDiscordUserIds: selected,
           excludedSignatures: action === "reroll" ? draft?.excludedSignatures ?? [] : [],
+          constraints,
         } : {
           action,
           selectedDiscordUserIds: selected,
           draftId: draft?.draftId,
+          constraints,
         }),
       });
       const result = await response.json();
@@ -142,6 +149,7 @@ export default function TeamBuilder({
             ...(action === "reroll" ? draft?.excludedSignatures ?? [] : []),
             result.composition.signature,
           ],
+          constraints,
           composition: result.composition,
           status: "DRAFT",
           expiresAt: now,
@@ -202,6 +210,8 @@ export default function TeamBuilder({
 
         {rosterNotice && <p className={`mt-3 rounded-lg px-3 py-2 text-xs ${recentRoster ? "bg-[var(--success-soft)] text-[var(--success)]" : "bg-[var(--warning-soft)] text-[var(--warning)]"}`} role="status">{rosterNotice}</p>}
         {error && <p role="alert" className="mt-3 rounded-lg border border-[#f2b8aa] bg-[var(--error-soft)] px-3 py-2 text-sm text-[var(--error)]">{error}</p>}
+
+        {selectedPlayers.length === 10 && <div className={mobileListCollapsed && draft?.composition ? "max-sm:hidden" : ""}><ConstraintPanel players={selectedPlayers} value={constraints} disabled={pending || draft?.status === "CONFIRMED"} onChange={(next) => {setConstraints(next); setDraft(null); setGuideOpen(false); setError(""); setMobileListCollapsed(false);}} /></div>}
 
         {publicMode && selectedPlayers.length > 0 && !mobileListCollapsed && (
           <div className="-mx-1 mt-3 overflow-x-auto px-1 pb-1 sm:hidden" aria-label="선택된 참가자">
@@ -347,6 +357,28 @@ function SelectionRoster({
   );
 }
 
+function ConstraintPanel({players, value, disabled, onChange}: {players: PlayerProfile[]; value: TeamConstraints; disabled: boolean; onChange: (value: TeamConstraints) => void}) {
+  const [first, setFirst] = useState(players[0]?.discordUserId ?? "");
+  const [second, setSecond] = useState(players[1]?.discordUserId ?? "");
+  const lockedRole = (id: string) => value.roleLocks.find((lock) => lock.discordUserId === id)?.role ?? "";
+  const changeLock = (discordUserId: string, role: "" | Role) => onChange({
+    ...value,
+    roleLocks: role
+      ? [...value.roleLocks.filter((lock) => lock.discordUserId !== discordUserId), {discordUserId, role}]
+      : value.roleLocks.filter((lock) => lock.discordUserId !== discordUserId),
+  });
+  const addPair = () => {
+    if (!first || !second || first === second) return;
+    const exists = value.sameTeamPairs.some((pair) =>
+      (pair.firstDiscordUserId === first && pair.secondDiscordUserId === second)
+      || (pair.firstDiscordUserId === second && pair.secondDiscordUserId === first));
+    if (exists) return;
+    onChange({...value, sameTeamPairs: [...value.sameTeamPairs, {firstDiscordUserId: first, secondDiscordUserId: second}]});
+  };
+  const name = (id: string) => players.find((player) => player.discordUserId === id)?.displayName ?? id;
+  return <details className="mt-3 rounded-xl border border-[var(--hairline-soft)] bg-[var(--surface-soft)] p-3"><summary className="cursor-pointer text-sm font-bold">편성 조건 <span className="ml-1 text-xs font-medium text-[var(--muted)]">라인 고정 {value.roleLocks.length} · 같은 팀 {value.sameTeamPairs.length}</span></summary><div className="mt-4"><h3 className="text-xs font-bold">선수 라인 고정</h3><div className="mt-2 grid gap-2 sm:grid-cols-2">{players.map((player) => <label key={player.discordUserId} className="flex items-center justify-between gap-2 rounded-lg bg-white px-3 py-2 text-xs"><span className="truncate font-semibold">{player.displayName}</span><select disabled={disabled} value={lockedRole(player.discordUserId)} onChange={(event) => changeLock(player.discordUserId, event.target.value as "" | Role)} className="min-h-9 rounded-lg border border-[var(--hairline)] bg-white px-2"><option value="">자동</option>{ROLES.map((role) => <option key={role} value={role}>{ROLE_LABEL[role]}</option>)}</select></label>)}</div><h3 className="mt-4 text-xs font-bold">같은 팀 고정</h3><div className="mt-2 grid grid-cols-[1fr_1fr_auto] gap-2"><select disabled={disabled} value={first} onChange={(event) => setFirst(event.target.value)} className="min-w-0 rounded-lg border border-[var(--hairline)] bg-white px-2 text-xs">{players.map((player) => <option key={player.discordUserId} value={player.discordUserId}>{player.displayName}</option>)}</select><select disabled={disabled} value={second} onChange={(event) => setSecond(event.target.value)} className="min-w-0 rounded-lg border border-[var(--hairline)] bg-white px-2 text-xs">{players.map((player) => <option key={player.discordUserId} value={player.discordUserId}>{player.displayName}</option>)}</select><button type="button" disabled={disabled || first === second} onClick={addPair} className="secondary-button min-h-10 px-3 text-xs">추가</button></div><div className="mt-2 flex flex-wrap gap-2">{value.sameTeamPairs.map((pair, index) => <span key={`${pair.firstDiscordUserId}-${pair.secondDiscordUserId}`} className="inline-flex items-center gap-2 rounded-full bg-white px-3 py-1.5 text-xs font-semibold">{name(pair.firstDiscordUserId)} + {name(pair.secondDiscordUserId)}<button type="button" disabled={disabled} onClick={() => onChange({...value, sameTeamPairs: value.sameTeamPairs.filter((_, pairIndex) => pairIndex !== index)})} aria-label={`${name(pair.firstDiscordUserId)}와 ${name(pair.secondDiscordUserId)} 같은 팀 고정 삭제`} className="text-[var(--error)]">×</button></span>)}</div></div></details>;
+}
+
 function Team({title, color, assignments}: {title: string; color: "blue" | "red"; assignments: TeamAssignment[]}) {
   const theme = color === "blue"
     ? "border-[#cfe2ff] bg-[#f5f9ff] text-[#2463a5]"
@@ -358,7 +390,7 @@ function Team({title, color, assignments}: {title: string; color: "blue" | "red"
         {assignments.map((player) => (
           <div key={player.role} className="flex h-16 items-center gap-2.5 rounded-lg border border-black/[0.05] bg-white px-2.5 py-2 text-[var(--ink)]">
             <RankTierIcon rank={player.rank} size={36} />
-            <div className="min-w-0 flex-1"><div className="flex items-center justify-between gap-2"><span className="text-[11px] font-bold text-[var(--muted)]">{ROLE_LABEL[player.role]}</span><span className="truncate text-[10px] text-[var(--muted)]">{player.rankQueue === "SOLO" ? "솔랭" : player.rankQueue === "FLEX" ? "자랭" : "랭크"} · {player.rank}</span></div><div className="mt-0.5 flex min-w-0 items-center gap-1"><p className="min-w-0 flex-1 truncate text-sm font-semibold">{player.displayName}</p>{player.offRole && <span title={OFF_ROLE_DESCRIPTION} className="shrink-0 rounded bg-[var(--warning-soft)] px-1.5 py-0.5 text-[9px] font-bold text-[var(--warning)]">오프롤</span>}{player.lowConfidence && <span title={LOW_CONFIDENCE_DESCRIPTION} className="shrink-0 rounded bg-[var(--warning-soft)] px-1.5 py-0.5 text-[9px] font-bold text-[var(--warning)]">낮은 신뢰도</span>}</div></div>
+            <div className="min-w-0 flex-1"><div className="flex items-center justify-between gap-2"><span className="text-[11px] font-bold text-[var(--muted)]">{ROLE_LABEL[player.role]}</span><span className="truncate text-[10px] text-[var(--muted)]">{player.rankQueue === "SOLO" ? "솔랭" : player.rankQueue === "FLEX" ? "자랭" : "랭크"} · {player.rank}</span></div><div className="mt-0.5 flex min-w-0 items-center gap-1"><p className="min-w-0 flex-1 truncate text-sm font-semibold">{player.displayName}</p>{player.offRole && <span title={OFF_ROLE_DESCRIPTION} className="shrink-0 rounded bg-[var(--warning-soft)] px-1.5 py-0.5 text-[9px] font-bold text-[var(--warning)]">0% 선호</span>}{player.lowConfidence && <span title={LOW_CONFIDENCE_DESCRIPTION} className="shrink-0 rounded bg-[var(--warning-soft)] px-1.5 py-0.5 text-[9px] font-bold text-[var(--warning)]">낮은 신뢰도</span>}</div></div>
           </div>
         ))}
       </div>

@@ -6,6 +6,7 @@ import {
   type Role,
   type TeamAssignment,
   type TeamComposition,
+  type TeamConstraints,
   type TeamSession,
 } from "@/lib/lol/types";
 import {
@@ -13,6 +14,8 @@ import {
   observedRankScore,
   tierScore,
 } from "@/lib/lol/rating-calculator";
+import {resolveRolePreferences} from "@/lib/lol/role-preferences";
+import {emptyTeamConstraints} from "@/lib/lol/team-constraints";
 
 const ROLES: Role[] = ["TOP", "JUNGLE", "MIDDLE", "BOTTOM", "UTILITY"];
 const PLAYER_COUNT = 10;
@@ -37,6 +40,8 @@ type SearchContext = {
   recentWeightTotal: number;
   minimumOffRoles: number;
   minimumOffRoleMemo: number[][];
+  lockedRoleIndexes: number[];
+  sameTeamPairs: Array<[number, number]>;
   bestByTeamMask: Map<number, Candidate>;
 };
 
@@ -46,6 +51,7 @@ export function balanceTeam(
   excludedSignatures = new Set<string>(),
   random: () => number = Math.random,
   ratings = new Map<string, InhousePlayerRating>(),
+  constraints: TeamConstraints = emptyTeamConstraints(),
 ): TeamComposition {
   if (players.length !== PLAYER_COUNT) throw new Error("정확히 10명의 선수가 필요합니다.");
   if (new Set(players.map((player) => player.discordUserId)).size !== PLAYER_COUNT) {
@@ -58,6 +64,8 @@ export function balanceTeam(
   const signals = ordered.map((player) => ROLES.map((role) =>
     signal(player, role, ratings.get(player.discordUserId), prior)));
   const preferences = ordered.map((player) => ROLES.map((role) => preferencePenalty(player, role)));
+  const indexById = new Map(ordered.map((player, index) => [player.discordUserId, index]));
+  const lockedRoleById = new Map(constraints.roleLocks.map((lock) => [lock.discordUserId, ROLES.indexOf(lock.role)]));
   const minimumOffRoleMemo = Array.from({length: ROLES.length + 1}, () =>
     new Array<number>(1 << PLAYER_COUNT).fill(-1));
   const context: SearchContext = {
@@ -66,18 +74,21 @@ export function balanceTeam(
     preferences,
     repeatWeights: buildRepeatWeights(ordered, recent),
     recentWeightTotal: recent.reduce((sum, _session, index) => sum + Math.pow(0.85, index), 0),
-    minimumOffRoles: 0,
+    minimumOffRoles: PLAYER_COUNT + 1,
     minimumOffRoleMemo,
+    lockedRoleIndexes: ordered.map((player) => lockedRoleById.get(player.discordUserId) ?? -1),
+    sameTeamPairs: constraints.sameTeamPairs.map((pair) => [
+      indexById.get(pair.firstDiscordUserId)!, indexById.get(pair.secondDiscordUserId)!,
+    ]),
     bestByTeamMask: new Map(),
   };
-  context.minimumOffRoles = minimumRemainingOffRoles(0, FULL_PLAYER_MASK, context);
   pairRoles(0, FULL_PLAYER_MASK, new Array<number>(PLAYER_COUNT), 0, 0, 0, 0, context);
 
   let candidates = [...context.bestByTeamMask.values()].sort((left, right) =>
     left.cost - right.cost
       || (left.signature < right.signature ? -1 : left.signature > right.signature ? 1 : 0),
   );
-  if (!candidates.length) throw new Error("팀 조합을 계산할 수 없습니다.");
+  if (!candidates.length) throw new Error("고정 조건을 만족하는 팀 조합이 없습니다. 라인 고정과 같은 팀 고정의 충돌을 확인해 주세요.");
   const veryBalanced = candidates.filter((candidate) => candidate.teamGap <= 0.03 && candidate.maxLaneGap <= 0.10);
   const balanced = candidates.filter((candidate) => candidate.teamGap <= 0.06 && candidate.maxLaneGap <= 0.18);
   candidates = (veryBalanced.length ? veryBalanced : balanced.length ? balanced : candidates)
@@ -97,8 +108,10 @@ function minimumRemainingOffRoles(
   let minimum = PLAYER_COUNT + 1;
   for (let first = 0; first < PLAYER_COUNT; first += 1) {
     if (!(remainingMask & (1 << first))) continue;
+    if (!canPlayRole(first, roleIndex, context)) continue;
     for (let second = first + 1; second < PLAYER_COUNT; second += 1) {
       if (!(remainingMask & (1 << second))) continue;
+      if (!canPlayRole(second, roleIndex, context)) continue;
       const nextMask = remainingMask & ~(1 << first) & ~(1 << second);
       const offRoles = offRole(context.preferences[first][roleIndex])
         + offRole(context.preferences[second][roleIndex])
@@ -121,13 +134,15 @@ function pairRoles(
   context: SearchContext,
 ) {
   if (roleIndex === ROLES.length) {
-    orientTeams(pairs, laneGapTotal, maxLaneGap, preferenceTotal, context);
+    orientTeams(pairs, offRoleCount, laneGapTotal, maxLaneGap, preferenceTotal, context);
     return;
   }
   for (let first = 0; first < PLAYER_COUNT; first += 1) {
     if (!(remainingMask & (1 << first))) continue;
+    if (!canPlayRole(first, roleIndex, context)) continue;
     for (let second = first + 1; second < PLAYER_COUNT; second += 1) {
       if (!(remainingMask & (1 << second))) continue;
+      if (!canPlayRole(second, roleIndex, context)) continue;
       const nextMask = remainingMask & ~(1 << first) & ~(1 << second);
       const nextOffRoleCount = offRoleCount
         + offRole(context.preferences[first][roleIndex])
@@ -153,6 +168,7 @@ function pairRoles(
 
 function orientTeams(
   pairs: number[],
+  offRoleCount: number,
   laneGapTotal: number,
   maxLaneGap: number,
   preferenceTotal: number,
@@ -172,6 +188,12 @@ function orientTeams(
     }
     // Swapping every blue and red player produces the same team composition.
     if (!(blueMask & 1)) continue;
+    if (!sameTeamConstraintsSatisfied(blueMask, context.sameTeamPairs)) continue;
+    if (offRoleCount > context.minimumOffRoles) continue;
+    if (offRoleCount < context.minimumOffRoles) {
+      context.minimumOffRoles = offRoleCount;
+      context.bestByTeamMask.clear();
+    }
     const teamGap = Math.abs(blueTotal - redTotal) / 5;
     const repeat = repeatPenalty(blueMask, context.repeatWeights, context.recentWeightTotal);
     const cost = 0.35 * teamGap + 0.30 * (laneGapTotal / 5)
@@ -304,9 +326,7 @@ function groupPrior(players: PlayerProfile[]) {
 const UNRANKED = {tier: "UNRANKED", division: "", leaguePoints: 0, wins: 0, losses: 0};
 
 function preferencePenalty(player: PlayerProfile, role: Role) {
-  if (player.primaryRole === role) return 0;
-  if (player.secondaryRole === role) return 0.25;
-  return 1;
+  return 1 - resolveRolePreferences(player)[role] / 100;
 }
 
 const offRole = (preference: number) => preference === 1 ? 1 : 0;
@@ -326,6 +346,16 @@ function assignment(player: PlayerProfile, role: Role): TeamAssignment {
     offRole: preferencePenalty(player, role) === 1,
     lowConfidence: !stats || stats.confidence < 0.6,
   };
+}
+
+function canPlayRole(playerIndex: number, roleIndex: number, context: SearchContext) {
+  const locked = context.lockedRoleIndexes[playerIndex];
+  return locked < 0 || locked === roleIndex;
+}
+
+function sameTeamConstraintsSatisfied(blueMask: number, pairs: Array<[number, number]>) {
+  return pairs.every(([left, right]) =>
+    Boolean(blueMask & (1 << left)) === Boolean(blueMask & (1 << right)));
 }
 
 const TIERS = ["IRON", "BRONZE", "SILVER", "GOLD", "PLATINUM", "EMERALD", "DIAMOND", "MASTER", "GRANDMASTER", "CHALLENGER"];

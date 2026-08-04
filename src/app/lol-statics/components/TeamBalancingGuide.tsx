@@ -37,7 +37,7 @@ export default function TeamBalancingGuide({id}: {id: string}) {
             </div>
           ))}
         </div>
-        <p className="mt-3 text-xs leading-5 text-[var(--muted)]">포지션 선호 위반값은 주 포지션 0, 부 포지션 0.25, 그 외 포지션 1로 계산해요. 최근 같은 팀 반복은 최근 10번의 확정 편성을 사용하며 최신 기록일수록 더 크게 반영해요.</p>
+        <p className="mt-3 text-xs leading-5 text-[var(--muted)]">포지션 선호 위반값은 1 - 선호도/100으로 계산해요. 80% 라인은 0.2, 20% 라인은 0.8이며, 0% 라인은 가능한 한 먼저 피합니다. 최근 같은 팀 반복은 최근 10번의 확정 편성을 사용하며 최신 기록일수록 더 크게 반영해요.</p>
       </div>
 
       <div className="mt-4 grid gap-3 md:grid-cols-2">
@@ -50,7 +50,7 @@ export default function TeamBalancingGuide({id}: {id: string}) {
         </GuideBlock>
         <GuideBlock title="선수별 표시">
           <dl className="space-y-2">
-            <div><dt className="inline font-bold text-[var(--warning)]">오프롤</dt><dd className="inline"> — {OFF_ROLE_DESCRIPTION} 부 포지션은 오프롤이 아니에요.</dd></div>
+            <div><dt className="inline font-bold text-[var(--warning)]">0% 선호</dt><dd className="inline"> — {OFF_ROLE_DESCRIPTION}</dd></div>
             <div><dt className="inline font-bold text-[var(--warning)]">낮은 신뢰도</dt><dd className="inline"> — {LOW_CONFIDENCE_DESCRIPTION} 최근 솔랭 기준 대략 8판 미만에서 주로 표시되며, 자랭·일반게임은 더 많은 표본이 필요할 수 있어요.</dd></div>
           </dl>
         </GuideBlock>

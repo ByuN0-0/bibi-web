@@ -2,6 +2,7 @@ import "server-only";
 import {listPlayers, listRecentSessions} from "@/lib/lol/repository";
 import {getOrRebuildInhouseRatingSnapshot} from "@/lib/lol/inhouse-rating-service";
 import {balanceTeam} from "@/lib/lol/team-balancer";
+import {parseTeamConstraints, TeamConstraintError} from "@/lib/lol/team-constraints";
 import {ALGORITHM_VERSION} from "@/lib/lol/types";
 
 export class TeamGenerationError extends Error {
@@ -13,13 +14,21 @@ export class TeamGenerationError extends Error {
 export async function generateTeamComposition(
   selectedDiscordUserIds: string[],
   excludedSignatures: string[] = [],
+  constraintsInput?: unknown,
 ) {
   if (selectedDiscordUserIds.length !== 10 || new Set(selectedDiscordUserIds).size !== 10) {
     throw new TeamGenerationError("선수를 정확히 10명 선택해 주세요.", 400);
   }
+  let constraints;
+  try {
+    constraints = parseTeamConstraints(constraintsInput, selectedDiscordUserIds);
+  } catch (error) {
+    if (error instanceof TeamConstraintError) throw new TeamGenerationError(error.message, 400);
+    throw error;
+  }
   const [allPlayers, recentSessions, ratingSnapshot] = await Promise.all([
     listPlayers(),
-    listRecentSessions(10, ALGORITHM_VERSION),
+    listRecentSessions(10, ["team-balancing-v3", ALGORITHM_VERSION]),
     getOrRebuildInhouseRatingSnapshot(),
   ]);
   const byId = new Map(allPlayers.map((player) => [player.discordUserId, player]));
@@ -41,5 +50,6 @@ export async function generateTeamComposition(
     new Set(excludedSignatures.slice(0, 20)),
     Math.random,
     new Map((ratingSnapshot?.ratings ?? []).map((rating) => [rating.discordUserId, rating])),
+    constraints,
   );
 }

@@ -2,6 +2,8 @@ import {describe, expect, it} from "vitest";
 import fixture from "@/test/fixtures/team-balancing-v1.json";
 import {balanceTeam, javaRandom} from "@/lib/lol/team-balancer";
 import {ALGORITHM_VERSION, ROLES, type PlayerProfile, type RoleStats} from "@/lib/lol/types";
+import {parseTeamConstraints} from "@/lib/lol/team-constraints";
+import {legacyRolePreferences, parseRolePreferences, resolveRolePreferences} from "@/lib/lol/role-preferences";
 
 function players(): PlayerProfile[] {
   return fixture.players.map((player) => ({
@@ -49,5 +51,57 @@ describe(ALGORITHM_VERSION, () => {
     const result = balanceTeam(samePreferences, [], new Set(), javaRandom(fixture.seed));
 
     expect([...result.blue, ...result.red].filter((player) => player.offRole)).toHaveLength(6);
+  });
+
+  it("applies fixed roles and same-team pairs as hard constraints", () => {
+    const constraints = parseTeamConstraints({
+      roleLocks: [{discordUserId: "1001", role: "BOTTOM"}],
+      sameTeamPairs: [
+        {firstDiscordUserId: "1001", secondDiscordUserId: "1002"},
+        {firstDiscordUserId: "1002", secondDiscordUserId: "1003"},
+      ],
+    }, players().map((player) => player.discordUserId));
+
+    const result = balanceTeam(players(), [], new Set(), javaRandom(fixture.seed), new Map(), constraints);
+    const blueIds = new Set(result.blue.map((player) => player.discordUserId));
+
+    expect([...result.blue, ...result.red].find((player) => player.discordUserId === "1001")?.role).toBe("BOTTOM");
+    expect(blueIds.has("1001")).toBe(blueIds.has("1002"));
+    expect(blueIds.has("1002")).toBe(blueIds.has("1003"));
+  });
+
+  it("rejects impossible fixed conditions", () => {
+    const constraints = {
+      roleLocks: ["1001", "1002", "1003"].map((discordUserId) => ({discordUserId, role: "TOP" as const})),
+      sameTeamPairs: [],
+    };
+    expect(() => balanceTeam(players(), [], new Set(), javaRandom(fixture.seed), new Map(), constraints))
+      .toThrow("고정 조건을 만족하는 팀 조합이 없습니다");
+  });
+});
+
+describe("role preferences and constraints", () => {
+  it.each([
+    {TOP: 100, JUNGLE: 0, MIDDLE: 0, BOTTOM: 0, UTILITY: 0},
+    {TOP: 80, JUNGLE: 20, MIDDLE: 0, BOTTOM: 0, UTILITY: 0},
+    {TOP: 50, JUNGLE: 30, MIDDLE: 20, BOTTOM: 0, UTILITY: 0},
+    {TOP: 25, JUNGLE: 25, MIDDLE: 25, BOTTOM: 25, UTILITY: 0},
+    {TOP: 20, JUNGLE: 20, MIDDLE: 20, BOTTOM: 20, UTILITY: 20},
+  ])("accepts one through five preferred roles", (preferences) => {
+    expect(parseRolePreferences(preferences)).toEqual(preferences);
+  });
+
+  it("falls back to legacy 80/20 preferences", () => {
+    expect(resolveRolePreferences({primaryRole: "TOP", secondaryRole: "BOTTOM"}))
+      .toEqual(legacyRolePreferences("TOP", "BOTTOM"));
+  });
+
+  it("validates percentages and connected same-team groups", () => {
+    expect(parseRolePreferences({TOP: 55, JUNGLE: 20, MIDDLE: 20, BOTTOM: 0, UTILITY: 0})).toBeNull();
+    const ids = Array.from({length: 10}, (_, index) => String(1001 + index));
+    expect(() => parseTeamConstraints({sameTeamPairs: ids.slice(0, 5).map((id, index) => ({
+      firstDiscordUserId: id,
+      secondDiscordUserId: ids[index + 1],
+    }))}, ids)).toThrow("최대 5명");
   });
 });

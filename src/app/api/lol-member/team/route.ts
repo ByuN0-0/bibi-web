@@ -11,6 +11,7 @@ export const maxDuration = 60;
 type RequestBody = {
   selectedDiscordUserIds?: unknown;
   excludedSignatures?: unknown;
+  constraints?: unknown;
 };
 
 const attemptsByIp = new Map<string, number[]>();
@@ -51,7 +52,7 @@ export async function POST(request: NextRequest) {
   }
 
   try {
-    const composition = await generateTeamComposition(selectedDiscordUserIds, excludedSignatures);
+    const composition = await generateTeamComposition(selectedDiscordUserIds, excludedSignatures, body.constraints);
     return NextResponse.json({composition});
   } catch (error) {
     if (error instanceof TeamGenerationError) {
