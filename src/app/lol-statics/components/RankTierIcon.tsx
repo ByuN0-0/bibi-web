@@ -1,4 +1,5 @@
 import Image from "next/image";
+import React from "react";
 import {rankTierFromText, rankTierIconPath} from "@/lib/lol/team-display";
 
 const TIER_LABEL: Record<ReturnType<typeof rankTierFromText>, string> = {
@@ -17,5 +18,5 @@ const TIER_LABEL: Record<ReturnType<typeof rankTierFromText>, string> = {
 
 export default function RankTierIcon({rank, size = 36}: {rank: string; size?: number}) {
   const tier = rankTierFromText(rank);
-  return <Image src={rankTierIconPath(rank)} alt={`${TIER_LABEL[tier]} 티어`} title={TIER_LABEL[tier]} width={size} height={size} sizes={`${size}px`} className="shrink-0 object-contain" />;
+  return <Image src={rankTierIconPath(rank)} alt={`${TIER_LABEL[tier]} 티어`} title={TIER_LABEL[tier]} width={size} height={size} sizes={`${size}px`} unoptimized className="shrink-0 object-contain" />;
 }

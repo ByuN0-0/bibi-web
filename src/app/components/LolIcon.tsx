@@ -1,7 +1,7 @@
 "use client";
 
 import Image from "next/image";
-import {useState} from "react";
+import React, {useState} from "react";
 import {dataDragonIconUrl} from "@/lib/lol/data-dragon-url";
 import type {LolAssetRef} from "@/lib/lol/types";
 
@@ -23,6 +23,7 @@ export default function LolIcon({asset, version, size = 32, className = ""}: {
       width={size}
       height={size}
       sizes={`${size}px`}
+      unoptimized
       onError={() => setFailed(true)}
       className={`shrink-0 rounded object-cover ${className}`}
     />

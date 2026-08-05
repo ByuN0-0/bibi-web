@@ -8,11 +8,6 @@ const nextConfig: NextConfig = {
         hostname: "ddragon.leagueoflegends.com",
         pathname: "/cdn/**",
       },
-      {
-        protocol: "https",
-        hostname: "raw.communitydragon.org",
-        pathname: "/latest/**",
-      },
     ],
   },
 };

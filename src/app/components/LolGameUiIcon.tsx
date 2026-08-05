@@ -1,21 +1,21 @@
 import Image from "next/image";
+import React from "react";
 import type {Role} from "@/lib/lol/types";
 import {ROLE_LABEL} from "@/lib/lol/types";
 
-const MATCH_HISTORY_ASSET_ROOT = "https://raw.communitydragon.org/latest/plugins/rcp-fe-lol-match-history/global/default";
-const POSITION_ASSET_ROOT = "https://raw.communitydragon.org/latest/plugins/rcp-fe-lol-clash/global/default/assets/images/position-selector/positions";
+const LOL_UI_ASSET_ROOT = "/images/lol/ui";
 
 const OBJECTIVE_ASSET = {
-  turret: `${MATCH_HISTORY_ASSET_ROOT}/tower-100.png`,
-  dragon: `${MATCH_HISTORY_ASSET_ROOT}/dragon-100.png`,
+  turret: `${LOL_UI_ASSET_ROOT}/turret.png`,
+  dragon: `${LOL_UI_ASSET_ROOT}/dragon.png`,
 } as const;
 
 const POSITION_ASSET: Record<Role, string> = {
-  TOP: `${POSITION_ASSET_ROOT}/icon-position-top.png`,
-  JUNGLE: `${POSITION_ASSET_ROOT}/icon-position-jungle.png`,
-  MIDDLE: `${POSITION_ASSET_ROOT}/icon-position-middle.png`,
-  BOTTOM: `${POSITION_ASSET_ROOT}/icon-position-bottom.png`,
-  UTILITY: `${POSITION_ASSET_ROOT}/icon-position-utility.png`,
+  TOP: `${LOL_UI_ASSET_ROOT}/position-top.png`,
+  JUNGLE: `${LOL_UI_ASSET_ROOT}/position-jungle.png`,
+  MIDDLE: `${LOL_UI_ASSET_ROOT}/position-middle.png`,
+  BOTTOM: `${LOL_UI_ASSET_ROOT}/position-bottom.png`,
+  UTILITY: `${LOL_UI_ASSET_ROOT}/position-utility.png`,
 };
 
 export function LolObjectiveIcon({kind, size = 16}: {kind: "gold" | keyof typeof OBJECTIVE_ASSET; size?: number}) {
@@ -30,16 +30,16 @@ export function LolObjectiveIcon({kind, size = 16}: {kind: "gold" | keyof typeof
         style={{
           width: size,
           height: size,
-          backgroundImage: `url(${MATCH_HISTORY_ASSET_ROOT}/icon_gold.png)`,
+          backgroundImage: `url(${LOL_UI_ASSET_ROOT}/gold.png)`,
           backgroundPosition: "center 1px",
           backgroundSize: `${size}px ${Math.round(size * 96 / 56)}px`,
         }}
       />
     );
   }
-  return <Image src={OBJECTIVE_ASSET[kind]} alt={label} title={label} width={size} height={size} sizes={`${size}px`} className="shrink-0 object-contain" />;
+  return <Image src={OBJECTIVE_ASSET[kind]} alt={label} title={label} width={size} height={size} sizes={`${size}px`} unoptimized className="shrink-0 object-contain" />;
 }
 
 export function LolPositionIcon({role, size = 16}: {role: Role; size?: number}) {
-  return <Image src={POSITION_ASSET[role]} alt={ROLE_LABEL[role]} title={ROLE_LABEL[role]} width={size} height={size} sizes={`${size}px`} className="shrink-0 object-contain" />;
+  return <Image src={POSITION_ASSET[role]} alt={ROLE_LABEL[role]} title={ROLE_LABEL[role]} width={size} height={size} sizes={`${size}px`} unoptimized className="shrink-0 object-contain" />;
 }

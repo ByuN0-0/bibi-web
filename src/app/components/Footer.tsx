@@ -32,8 +32,11 @@ export default function Footer() {
             ))}
           </nav>
         </div>
-        <div className="mt-10 border-t border-[var(--hairline-soft)] pt-6 text-xs text-[var(--muted)]">
-          © {new Date().getFullYear()} BIBI. 친구들과 함께 만든 Discord 봇.
+        <div className="mt-10 border-t border-[var(--hairline-soft)] pt-6 text-xs leading-5 text-[var(--muted)]">
+          <p>© {new Date().getFullYear()} BIBI. 친구들과 함께 만든 Discord 봇.</p>
+          <p className="mt-3 max-w-4xl">
+            BIBI isn&apos;t endorsed by Riot Games and doesn&apos;t reflect the views or opinions of Riot Games or anyone officially involved in producing or managing Riot Games properties. Riot Games, and all associated properties are trademarks or registered trademarks of Riot Games, Inc.
+          </p>
         </div>
       </div>
     </footer>
