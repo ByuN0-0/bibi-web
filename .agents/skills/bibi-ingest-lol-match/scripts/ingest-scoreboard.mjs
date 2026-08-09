@@ -13,8 +13,10 @@ export async function ingestScoreboard(screenshotPath, options = {}) {
     allowAmbiguous: true,
   });
 
-  const outputPath = options.outputPath ?? "resolved-match.json";
-  await writeFile(outputPath, `${JSON.stringify(recognition.payload, null, 2)}\n`, {mode: 0o600});
+  const outputPath = options.outputPath ?? null;
+  if (outputPath) {
+    await writeFile(outputPath, `${JSON.stringify(recognition.payload, null, 2)}\n`, {mode: 0o600});
+  }
   if (options.reportPath) {
     await writeFile(options.reportPath, `${JSON.stringify(recognition.report, null, 2)}\n`, {mode: 0o600});
   }
