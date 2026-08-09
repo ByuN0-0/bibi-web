@@ -22,6 +22,14 @@ The command loads the registered-player catalog, performs OCR and image recognit
 - Return only the URL printed by the command. Do not print a review table or summary.
 - If the command fails, return its concise error and stop. Diagnose or use manual tools only when the user explicitly asks.
 
+If the user supplies a corrected duration after a duration OCR failure, retry the same command with the exact total seconds:
+
+```bash
+node --env-file=.env .agents/skills/bibi-ingest-lol-match/scripts/ingest-scoreboard.mjs <attached-screenshot-path> --duration-seconds <seconds>
+```
+
+If the user explicitly supplies corrected team totals after a mechanical-total failure, add one `--team-stat TEAM.field=value` option per value and retry. Supported fields are `kills`, `deaths`, `assists`, and `goldTotal`.
+
 ## Validate without saving
 
 When the user explicitly requests validation or analysis without a database write, run:

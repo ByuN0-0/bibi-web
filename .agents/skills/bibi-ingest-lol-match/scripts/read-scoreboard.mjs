@@ -60,6 +60,8 @@ export async function readScoreboardImage(original, options = {}) {
       inventoryImage: assetAligned,
       itemGridLeft: REFERENCE_GRID.ITEM_LEFT,
       itemSlotGap: REFERENCE_GRID.ITEM_GAP,
+      durationSeconds: options.durationSeconds,
+      teamStatOverrides: options.teamStatOverrides,
     });
   } finally {
     if (!(options.reuseWorkers ?? false)) await Promise.all([worker.terminate(), englishWorker.terminate()]);
@@ -143,7 +145,7 @@ async function recognizeScoreboard(original, assetLayout) {
     textField("date", {left: 304, top: 43, width: 100, height: 22}, "time"),
   ]);
   const playedOn = parseDate(dateText.text);
-  const durationSeconds = parseDuration(durationText.text);
+  const durationSeconds = assetLayout.durationSeconds ?? parseDuration(durationText.text);
   const winner = resultText.text.includes("패") ? "RED" : resultText.text.includes("리") ? "BLUE" : null;
   if (!playedOn) fail(`경기 날짜를 읽지 못했습니다: ${dateText.text || "(empty)"}`);
   if (!durationSeconds) fail(`경기 시간을 읽지 못했습니다: ${durationText.text || "(empty)"}`);
@@ -221,6 +223,7 @@ async function recognizeScoreboard(original, assetLayout) {
     }
   }
 
+  applyTeamStatOverrides(teamStats, assetLayout.teamStatOverrides);
   reconcileNumericAlternatives(teamStats, participants, numericAlternatives);
   for (const repair of repairMissingParticipantTotals(teamStats, participants)) {
     ocrLog.push({field: `participants.${repair.participantIndex}.${repair.field}.derived`, text: String(repair.value), confidence: 100});
@@ -240,6 +243,17 @@ async function recognizeScoreboard(original, assetLayout) {
     playedOn, winner, durationSeconds,
     teamStats, participants, reviewIssues: recognitionIssues,
   };
+}
+
+function applyTeamStatOverrides(teamStats, overrides = {}) {
+  for (const [team, fields] of Object.entries(overrides)) {
+    const stats = teamStats.find((entry) => entry.team === team);
+    if (!stats) continue;
+    for (const [field, value] of Object.entries(fields)) {
+      stats[field] = value;
+      ocrLog.push({field: `${team}.${field}.override`, text: String(value), confidence: 100});
+    }
+  }
 }
 
 async function levelField(field, centerX, centerY) {
