@@ -32,6 +32,14 @@ describe("Data Dragon references", () => {
 
   it("accepts canonical assets and builds CDN URLs", async () => {
     await expect(validateDataDragonReferences(payload())).resolves.toBeUndefined();
+    expect(vi.mocked(fetch)).toHaveBeenCalledWith(
+      "https://ddragon.leagueoflegends.com/api/versions.json",
+      expect.objectContaining({cache: "no-store"}),
+    );
+    expect(vi.mocked(fetch)).toHaveBeenCalledWith(
+      `https://ddragon.leagueoflegends.com/cdn/${version}/data/ko_KR/champion.json`,
+      expect.objectContaining({cache: "force-cache"}),
+    );
     expect(dataDragonIconUrl(version, champion.iconPath)).toBe(`https://ddragon.leagueoflegends.com/cdn/${version}/img/champion/Ahri.png`);
     expect(dataDragonIconUrl(version, perk.iconPath)).toBe(`https://ddragon.leagueoflegends.com/cdn/img/${perk.iconPath}`);
   });

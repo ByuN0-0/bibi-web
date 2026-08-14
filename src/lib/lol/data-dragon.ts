@@ -78,7 +78,7 @@ async function fetchCatalog(version: string): Promise<DataDragonCatalog> {
   try {
     const base = `${DDRAGON_ORIGIN}/cdn/${encodeURIComponent(version)}/data/ko_KR`;
     const [versions, champions, items, spells, runeTrees] = await Promise.all([
-      fetchJson<string[]>(`${DDRAGON_ORIGIN}/api/versions.json`),
+      fetchJson<string[]>(`${DDRAGON_ORIGIN}/api/versions.json`, "no-store"),
       fetchJson<VersionedData>(`${base}/champion.json`),
       fetchJson<ItemData>(`${base}/item.json`),
       fetchJson<VersionedData>(`${base}/summoner.json`),
@@ -125,8 +125,8 @@ function normalizeRuneName(name: string) {
   return name.replace(/\s+/g, "");
 }
 
-async function fetchJson<T>(url: string): Promise<T> {
-  const response = await fetch(url, {signal: AbortSignal.timeout(5_000), cache: "force-cache"});
+async function fetchJson<T>(url: string, cache: RequestCache = "force-cache"): Promise<T> {
+  const response = await fetch(url, {signal: AbortSignal.timeout(5_000), cache});
   if (!response.ok) throw new Error(`Data Dragon ${response.status}`);
   return response.json() as Promise<T>;
 }
