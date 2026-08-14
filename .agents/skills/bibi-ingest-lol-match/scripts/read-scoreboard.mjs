@@ -62,6 +62,7 @@ export async function readScoreboardImage(original, options = {}) {
       itemSlotGap: REFERENCE_GRID.ITEM_GAP,
       durationSeconds: options.durationSeconds,
       teamStatOverrides: options.teamStatOverrides,
+      participantStatOverrides: options.participantStatOverrides,
     });
   } finally {
     if (!(options.reuseWorkers ?? false)) await Promise.all([worker.terminate(), englishWorker.terminate()]);
@@ -189,7 +190,7 @@ async function recognizeScoreboard(original, assetLayout) {
         numberField(`participants.${index}.kills`, 526, row, 24, {narrowRetry: true, allowMissing: true}),
         numberField(`participants.${index}.deaths`, 561, row, 24, {narrowRetry: true, allowMissing: true}),
         numberField(`participants.${index}.assists`, 604, row, 24, {narrowRetry: true, allowMissing: true}),
-        numberField(`participants.${index}.cs`, 661, row, 48),
+        numberField(`participants.${index}.cs`, 661, row, 48, {override: assetLayout.participantStatOverrides?.[index]?.cs}),
         numberField(`participants.${index}.gold`, 740, row, 64, {allowMissing: true}),
         numberField(`participants.${index}.goldWide`, 746, row, 76, {allowMissing: true, highContrast: true}),
       ]);
@@ -380,7 +381,12 @@ async function runCli() {
   process.stdout.write(`Mechanical scoreboard read completed in ${result.report.elapsedMs}ms (alignment confidence ${(result.report.layout.confidence * 100).toFixed(0)}%).\n`);
 }
 
-async function numberField(field, centerX, centerY, width, {blankIsZero = false, narrowRetry = false, allowMissing = false, highContrast = false} = {}) {
+async function numberField(field, centerX, centerY, width, {blankIsZero = false, narrowRetry = false, allowMissing = false, highContrast = false, override} = {}) {
+  if (override !== undefined) {
+    if (!Number.isSafeInteger(override) || override < 0) fail(`${field} 보정값이 올바르지 않습니다.`);
+    ocrLog.push({field: `${field}.override`, text: String(override), confidence: 100});
+    return override;
+  }
   let result = await textField(field, {left: Math.round(centerX - width / 2), top: centerY - 13, width, height: 26}, highContrast ? "number-high" : "number");
   let value = parseInteger(result.text);
   if (narrowRetry) {

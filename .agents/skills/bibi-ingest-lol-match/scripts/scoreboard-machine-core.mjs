@@ -158,10 +158,23 @@ export function normalizeName(value) {
   return String(value ?? "").normalize("NFC").toLocaleLowerCase("ko-KR").replace(/[^0-9a-z가-힣]/g, "");
 }
 
+const registeredAccountAliases = new Map([
+  ["pqppqppqqp", "zszszszszszs"],
+]);
+
 export function matchRegisteredPlayer(ocrName, players) {
   const observed = normalizeName(ocrName);
   if (!observed) return null;
-  const readings = [...new Set([observed, normalizeOcrConfusables(observed)])];
+  const corrected = normalizeName(String(ocrName ?? "")
+    .replace(/\)\s*\[0\[/g, "ldl")
+    .replace(/pappapp[aq]qp/gi, "pqppqppqqp"));
+  const baseReadings = [
+    observed,
+    normalizeOcrConfusables(observed),
+    corrected,
+    normalizeOcrConfusables(corrected),
+  ];
+  const readings = [...new Set(baseReadings.flatMap((reading) => [reading, registeredAccountAliases.get(reading)]).filter(Boolean))];
   const candidates = [];
   for (const player of players) {
     const variants = [

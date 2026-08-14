@@ -73,6 +73,45 @@ describe("scoreboard machine parsing", () => {
     expect(matchRegisteredPlayer("Z8ZS2ZS2ZS52ZS82S", players)).toMatchObject({discordUserId: "player-1"});
   });
 
+  it("matches the bracket OCR shape for the ldl account prefix", () => {
+    const players = [{
+      discordUserId: "player-ldl",
+      displayName: "비연",
+      riotGameName: "ldl연",
+      accounts: [],
+    }];
+    expect(matchRegisteredPlayer('") [0[연"', players)).toMatchObject({
+      discordUserId: "player-ldl",
+      observedName: "ldl연",
+    });
+  });
+
+  it("matches q characters read as a in the Pqppq account prefix", () => {
+    const players = [{
+      discordUserId: "player-pqppq",
+      displayName: "Pqppq",
+      riotGameName: "PqppqPpqqP",
+      accounts: [],
+    }];
+    expect(matchRegisteredPlayer('") PappaPpqqP"', players)).toMatchObject({
+      discordUserId: "player-pqppq",
+      observedName: "PqppqPpqqP",
+    });
+  });
+
+  it("links the Pqppq account alias to the registered zsz account", () => {
+    const players = [{
+      discordUserId: "player-zsz",
+      displayName: "Pqppq",
+      riotGameName: "zszszszszszs",
+      accounts: [],
+    }];
+    expect(matchRegisteredPlayer('") PappaPpaqP"', players)).toMatchObject({
+      discordUserId: "player-zsz",
+      observedName: "zszszszszszs",
+    });
+  });
+
   it("rejects a mechanically inconsistent team total", () => {
     const participants = Array.from({length: 10}, (_, index) => ({
       team: index < 5 ? "BLUE" : "RED", kills: 1, deaths: 2, assists: 3, goldEarned: 1000,
