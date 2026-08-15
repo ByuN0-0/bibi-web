@@ -1,7 +1,7 @@
 import {describe, expect, it} from "vitest";
 import fixture from "@/test/fixtures/team-balancing-v1.json";
-import {balanceTeam, javaRandom, summarizeLaneAdvantage} from "@/lib/lol/team-balancer";
-import {ALGORITHM_VERSION, ROLES, type PlayerProfile, type Role, type RoleStats, type TeamConstraints} from "@/lib/lol/types";
+import {balanceTeam, compareLanePriority, javaRandom, summarizeLaneAdvantage} from "@/lib/lol/team-balancer";
+import {ALGORITHM_VERSION, REPEAT_HISTORY_ALGORITHM_VERSIONS, ROLES, type PlayerProfile, type Role, type RoleStats, type TeamConstraints} from "@/lib/lol/types";
 import {parseTeamConstraints} from "@/lib/lol/team-constraints";
 import {legacyRolePreferences, parseRolePreferences, resolveRolePreferences} from "@/lib/lol/role-preferences";
 
@@ -26,10 +26,17 @@ function players(): PlayerProfile[] {
 }
 
 describe(ALGORITHM_VERSION, () => {
+  it("keeps v3 through v6 sessions for repeat teammate history", () => {
+    expect(REPEAT_HISTORY_ALGORITHM_VERSIONS).toEqual([
+      "team-balancing-v3", "team-balancing-v4", "team-balancing-v5", "team-balancing-v6",
+    ]);
+  });
+
   it("matches the shared seeded fixture", () => {
     const result = balanceTeam(players(), [], new Set(), javaRandom(fixture.seed));
     expect(result.algorithmVersion).toBe(fixture.algorithmVersion);
     expect(result.signature).toBe(fixture.expectedSignature);
+    expect(result.laneAdvantage).toEqual(fixture.expectedLaneAdvantage);
     expect([...result.blue, ...result.red]).toHaveLength(10);
     expect(new Set([...result.blue, ...result.red].map((player) => player.discordUserId)).size).toBe(10);
     expect([...result.blue, ...result.red].every((player) => !player.offRole)).toBe(true);
@@ -115,13 +122,32 @@ describe(ALGORITHM_VERSION, () => {
 });
 
 describe("lane advantage summary", () => {
-  it("combines bottom and utility and treats one point as neutral", () => {
-    expect(summarizeLaneAdvantage([0.05, -0.04, 0.03, 0.20, -0.16])).toEqual({
+  it("combines bottom and utility and treats three points as neutral", () => {
+    expect(summarizeLaneAdvantage([0.05, -0.04, 0.031, 0.20, -0.12])).toEqual({
       blueCount: 3, redCount: 1, neutralCount: 0, balanced: false,
     });
-    expect(summarizeLaneAdvantage([0.011, -0.02, 0.01, 0.20, -0.19])).toEqual({
+    expect(summarizeLaneAdvantage([0.031, -0.04, 0.03, 0.20, -0.19])).toEqual({
       blueCount: 1, redCount: 1, neutralCount: 2, balanced: true,
     });
+  });
+
+  it("treats values above three points as clear advantages", () => {
+    expect(summarizeLaneAdvantage([0.03, -0.03, 0.030001, -0.030001, -0.030001])).toEqual({
+      blueCount: 1, redCount: 1, neutralCount: 2, balanced: true,
+    });
+  });
+
+  it("prefers more neutral lanes over a lower cost when imbalance is equal", () => {
+    const twoToTwo = {blueCount: 2, redCount: 2, neutralCount: 0, balanced: true};
+    const oneToOne = {blueCount: 1, redCount: 1, neutralCount: 2, balanced: true};
+    expect(compareLanePriority(twoToTwo, 0.01, oneToOne, 0.20)).toBeGreaterThan(0);
+    expect(compareLanePriority(oneToOne, 0.20, twoToTwo, 0.01)).toBeLessThan(0);
+  });
+
+  it("keeps advantage imbalance ahead of neutral count", () => {
+    const balanced = {blueCount: 2, redCount: 2, neutralCount: 0, balanced: true};
+    const unbalanced = {blueCount: 2, redCount: 0, neutralCount: 2, balanced: false};
+    expect(compareLanePriority(balanced, 0.20, unbalanced, 0.01)).toBeLessThan(0);
   });
 });
 

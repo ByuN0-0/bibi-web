@@ -3,7 +3,7 @@ import {listPlayers, listRecentSessions} from "@/lib/lol/repository";
 import {getOrRebuildInhouseRatingSnapshot} from "@/lib/lol/inhouse-rating-service";
 import {balanceTeam} from "@/lib/lol/team-balancer";
 import {parseTeamConstraints, TeamConstraintError} from "@/lib/lol/team-constraints";
-import {ALGORITHM_VERSION} from "@/lib/lol/types";
+import {REPEAT_HISTORY_ALGORITHM_VERSIONS} from "@/lib/lol/types";
 
 export class TeamGenerationError extends Error {
   constructor(message: string, readonly status: number) {
@@ -28,7 +28,7 @@ export async function generateTeamComposition(
   }
   const [allPlayers, recentSessions, ratingSnapshot] = await Promise.all([
     listPlayers(),
-    listRecentSessions(10, ["team-balancing-v3", "team-balancing-v4", ALGORITHM_VERSION]),
+    listRecentSessions(10, [...REPEAT_HISTORY_ALGORITHM_VERSIONS]),
     getOrRebuildInhouseRatingSnapshot(),
   ]);
   const byId = new Map(allPlayers.map((player) => [player.discordUserId, player]));

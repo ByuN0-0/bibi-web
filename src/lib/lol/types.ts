@@ -1,4 +1,10 @@
-export const ALGORITHM_VERSION = "team-balancing-v5";
+export const ALGORITHM_VERSION = "team-balancing-v6";
+export const REPEAT_HISTORY_ALGORITHM_VERSIONS = [
+  "team-balancing-v3",
+  "team-balancing-v4",
+  "team-balancing-v5",
+  ALGORITHM_VERSION,
+] as const;
 export const ROLES = ["TOP", "JUNGLE", "MIDDLE", "BOTTOM", "UTILITY"] as const;
 export type Role = (typeof ROLES)[number];
 export type RolePreferences = Record<Role, number>;

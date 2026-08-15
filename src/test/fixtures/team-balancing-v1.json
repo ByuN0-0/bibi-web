@@ -1,7 +1,8 @@
 {
-  "algorithmVersion": "team-balancing-v5",
+  "algorithmVersion": "team-balancing-v6",
   "seed": 20260802,
   "expectedSignature": "1001-1003-1006-1008-1010|1002-1004-1005-1007-1009",
+  "expectedLaneAdvantage": {"blueCount":2,"redCount":2,"neutralCount":0,"balanced":true},
   "players": [
     {"id":"1001","name":"선수1","primaryRole":"TOP","secondaryRole":"JUNGLE","signals":{"TOP":0.82,"JUNGLE":0.55,"MIDDLE":0.30,"BOTTOM":0.25,"UTILITY":0.35}},
     {"id":"1002","name":"선수2","primaryRole":"TOP","secondaryRole":"MIDDLE","signals":{"TOP":0.74,"JUNGLE":0.40,"MIDDLE":0.58,"BOTTOM":0.30,"UTILITY":0.28}},

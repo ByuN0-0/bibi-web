@@ -2,6 +2,7 @@ import {describe, expect, it} from "vitest";
 import {
   BALANCE_FORMULA_ITEMS,
   BALANCE_GRADE_RULES,
+  BALANCE_GUIDE_STEPS,
   formatBalanceGap,
   formatLaneAdvantage,
   LOW_CONFIDENCE_DESCRIPTION,
@@ -30,6 +31,7 @@ describe("team balance guide", () => {
     ]);
     expect(OFF_ROLE_DESCRIPTION).toContain("선호도 0%");
     expect(LOW_CONFIDENCE_DESCRIPTION).toContain("60% 미만");
+    expect(BALANCE_GUIDE_STEPS[1]).toContain("동률 전장이 많은 조합");
   });
 
   it("formats only the aggregate lane advantage status", () => {

@@ -24,7 +24,7 @@ const FULL_PLAYER_MASK = (1 << PLAYER_COUNT) - 1;
 const OVERALL_RATING_WEIGHT = 0.30;
 const ROLE_RATING_WEIGHT = 0.70;
 const MAX_INHOUSE_WEIGHT = 0.30;
-const NEUTRAL_LANE_GAP = 0.01;
+const NEUTRAL_LANE_GAP = 0.03;
 
 type Candidate = {
   signature: string;
@@ -97,6 +97,8 @@ export function balanceTeam(
   if (!candidates.length) throw new Error("현재 조건에서 새로운 팀 조합이 없습니다.");
   const minimumAdvantageImbalance = Math.min(...candidates.map((candidate) => candidate.advantageImbalance));
   candidates = candidates.filter((candidate) => candidate.advantageImbalance === minimumAdvantageImbalance);
+  const maximumNeutralCount = Math.max(...candidates.map((candidate) => candidate.laneAdvantage.neutralCount));
+  candidates = candidates.filter((candidate) => candidate.laneAdvantage.neutralCount === maximumNeutralCount);
   const veryBalanced = candidates.filter((candidate) => candidate.laneAdvantage.balanced
     && candidate.teamGap <= 0.03 && candidate.maxLaneGap <= 0.10);
   const balanced = candidates.filter((candidate) => candidate.laneAdvantage.balanced
@@ -212,8 +214,7 @@ function orientTeams(
     const laneAdvantage = summarizeLaneAdvantage(roleDeltas);
     const advantageImbalance = Math.abs(laneAdvantage.blueCount - laneAdvantage.redCount);
     const existing = context.bestByTeamMask.get(blueMask);
-    if (existing && (existing.advantageImbalance < advantageImbalance
-      || (existing.advantageImbalance === advantageImbalance && existing.cost <= cost))) continue;
+    if (existing && compareLanePriority(existing.laneAdvantage, existing.cost, laneAdvantage, cost) <= 0) continue;
     const slots = new Array<number>(PLAYER_COUNT);
     for (let roleIndex = 0; roleIndex < ROLES.length; roleIndex += 1) {
       const swap = (orientation & (1 << roleIndex)) !== 0;
@@ -243,6 +244,19 @@ export function summarizeLaneAdvantage(roleDeltas: number[]): LaneAdvantage {
     else redCount += 1;
   }
   return {blueCount, redCount, neutralCount, balanced: blueCount === redCount};
+}
+
+export function compareLanePriority(
+  left: LaneAdvantage,
+  leftCost: number,
+  right: LaneAdvantage,
+  rightCost: number,
+) {
+  const leftImbalance = Math.abs(left.blueCount - left.redCount);
+  const rightImbalance = Math.abs(right.blueCount - right.redCount);
+  if (leftImbalance !== rightImbalance) return leftImbalance - rightImbalance;
+  if (left.neutralCount !== right.neutralCount) return right.neutralCount - left.neutralCount;
+  return leftCost - rightCost;
 }
 
 function buildRepeatWeights(players: PlayerProfile[], recent: TeamSession[]) {
