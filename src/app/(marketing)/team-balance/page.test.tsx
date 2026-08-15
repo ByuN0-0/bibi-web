@@ -18,9 +18,9 @@ describe("TeamBalancePage", () => {
     expect(markup).toContain("katex-display");
     expect(markup).toContain("katex-mathml");
     expect(markup).toContain("전체 팀 평균 실력 차이");
-    expect(markup).toContain("Team balancing · v6");
+    expect(markup).toContain("Team balancing · v7");
     expect(markup).toContain("3점 이하 동률 전장");
-    expect(markup).toContain("동률 전장 수 N을 최대화");
+    expect(markup).toContain("최고 선호 배정 수 Q와 동률 전장 수 N을 차례로 최대화");
     expect(markup).toContain("팀 편성 시작하기");
   });
 });

@@ -36,6 +36,11 @@ export function resolveRolePreferences(
     ?? legacyRolePreferences(player.primaryRole, player.secondaryRole);
 }
 
+export function highestPreferenceRoles(preferences: RolePreferences): Role[] {
+  const maximumPreference = Math.max(...ROLES.map((role) => preferences[role]));
+  return ROLES.filter((role) => preferences[role] === maximumPreference);
+}
+
 export function preferredLegacyRoles(preferences: RolePreferences): [Role, Role] {
   const ordered = [...ROLES].sort((left, right) =>
     preferences[right] - preferences[left] || ROLES.indexOf(left) - ROLES.indexOf(right));

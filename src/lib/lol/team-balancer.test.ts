@@ -3,7 +3,7 @@ import fixture from "@/test/fixtures/team-balancing-v1.json";
 import {balanceTeam, compareLanePriority, javaRandom, summarizeLaneAdvantage} from "@/lib/lol/team-balancer";
 import {ALGORITHM_VERSION, REPEAT_HISTORY_ALGORITHM_VERSIONS, ROLES, type PlayerProfile, type Role, type RoleStats, type TeamConstraints} from "@/lib/lol/types";
 import {parseTeamConstraints} from "@/lib/lol/team-constraints";
-import {legacyRolePreferences, parseRolePreferences, resolveRolePreferences} from "@/lib/lol/role-preferences";
+import {highestPreferenceRoles, legacyRolePreferences, parseRolePreferences, resolveRolePreferences} from "@/lib/lol/role-preferences";
 
 function players(): PlayerProfile[] {
   return fixture.players.map((player) => ({
@@ -29,14 +29,22 @@ describe(ALGORITHM_VERSION, () => {
   it("keeps v3 through v6 sessions for repeat teammate history", () => {
     expect(REPEAT_HISTORY_ALGORITHM_VERSIONS).toEqual([
       "team-balancing-v3", "team-balancing-v4", "team-balancing-v5", "team-balancing-v6",
+      "team-balancing-v7",
     ]);
   });
 
   it("matches the shared seeded fixture", () => {
-    const result = balanceTeam(players(), [], new Set(), javaRandom(fixture.seed));
+    const participantProfiles = players();
+    const result = balanceTeam(participantProfiles, [], new Set(), javaRandom(fixture.seed));
     expect(result.algorithmVersion).toBe(fixture.algorithmVersion);
     expect(result.signature).toBe(fixture.expectedSignature);
     expect(result.laneAdvantage).toEqual(fixture.expectedLaneAdvantage);
+    const profilesById = new Map(participantProfiles.map((player) => [player.discordUserId, player]));
+    const primaryRoleCount = [...result.blue, ...result.red].filter((assignment) => {
+      const profile = profilesById.get(assignment.discordUserId)!;
+      return highestPreferenceRoles(resolveRolePreferences(profile)).includes(assignment.role);
+    }).length;
+    expect(primaryRoleCount).toBe(fixture.expectedPrimaryRoleCount);
     expect([...result.blue, ...result.red]).toHaveLength(10);
     expect(new Set([...result.blue, ...result.red].map((player) => player.discordUserId)).size).toBe(10);
     expect([...result.blue, ...result.red].every((player) => !player.offRole)).toBe(true);
@@ -140,14 +148,21 @@ describe("lane advantage summary", () => {
   it("prefers more neutral lanes over a lower cost when imbalance is equal", () => {
     const twoToTwo = {blueCount: 2, redCount: 2, neutralCount: 0, balanced: true};
     const oneToOne = {blueCount: 1, redCount: 1, neutralCount: 2, balanced: true};
-    expect(compareLanePriority(twoToTwo, 0.01, oneToOne, 0.20)).toBeGreaterThan(0);
-    expect(compareLanePriority(oneToOne, 0.20, twoToTwo, 0.01)).toBeLessThan(0);
+    expect(compareLanePriority(twoToTwo, 6, 0.01, oneToOne, 6, 0.20)).toBeGreaterThan(0);
+    expect(compareLanePriority(oneToOne, 6, 0.20, twoToTwo, 6, 0.01)).toBeLessThan(0);
   });
 
   it("keeps advantage imbalance ahead of neutral count", () => {
     const balanced = {blueCount: 2, redCount: 2, neutralCount: 0, balanced: true};
     const unbalanced = {blueCount: 2, redCount: 0, neutralCount: 2, balanced: false};
-    expect(compareLanePriority(balanced, 0.20, unbalanced, 0.01)).toBeLessThan(0);
+    expect(compareLanePriority(balanced, 1, 0.20, unbalanced, 10, 0.01)).toBeLessThan(0);
+  });
+
+  it("prefers more highest-preference assignments before neutral lanes and cost", () => {
+    const twoToTwo = {blueCount: 2, redCount: 2, neutralCount: 0, balanced: true};
+    const oneToOne = {blueCount: 1, redCount: 1, neutralCount: 2, balanced: true};
+    expect(compareLanePriority(twoToTwo, 7, 0.20, oneToOne, 6, 0.01)).toBeLessThan(0);
+    expect(compareLanePriority(oneToOne, 6, 0.01, twoToTwo, 7, 0.20)).toBeGreaterThan(0);
   });
 });
 
@@ -200,6 +215,15 @@ describe("role preferences and constraints", () => {
   it("falls back to legacy 80/20 preferences", () => {
     expect(resolveRolePreferences({primaryRole: "TOP", secondaryRole: "BOTTOM"}))
       .toEqual(legacyRolePreferences("TOP", "BOTTOM"));
+  });
+
+  it("recognizes legacy, tied, and even highest preferences", () => {
+    expect(highestPreferenceRoles(legacyRolePreferences("JUNGLE", "MIDDLE")))
+      .toEqual(["JUNGLE"]);
+    expect(highestPreferenceRoles({TOP: 40, JUNGLE: 40, MIDDLE: 20, BOTTOM: 0, UTILITY: 0}))
+      .toEqual(["TOP", "JUNGLE"]);
+    expect(highestPreferenceRoles({TOP: 20, JUNGLE: 20, MIDDLE: 20, BOTTOM: 20, UTILITY: 20}))
+      .toEqual(ROLES);
   });
 
   it("validates percentages and connected same-team groups", () => {

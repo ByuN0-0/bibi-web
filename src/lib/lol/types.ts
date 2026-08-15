@@ -1,8 +1,9 @@
-export const ALGORITHM_VERSION = "team-balancing-v6";
+export const ALGORITHM_VERSION = "team-balancing-v7";
 export const REPEAT_HISTORY_ALGORITHM_VERSIONS = [
   "team-balancing-v3",
   "team-balancing-v4",
   "team-balancing-v5",
+  "team-balancing-v6",
   ALGORITHM_VERSION,
 ] as const;
 export const ROLES = ["TOP", "JUNGLE", "MIDDLE", "BOTTOM", "UTILITY"] as const;

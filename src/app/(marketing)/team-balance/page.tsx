@@ -46,7 +46,7 @@ export default function TeamBalancePage() {
         <div className="pointer-events-none absolute -right-24 top-10 h-72 w-72 rounded-full border-[48px] border-white/70" />
         <div className="page-shell relative grid gap-10 py-16 sm:py-20 lg:grid-cols-[1.08fr_0.92fr] lg:items-center lg:py-24">
           <div className="max-w-3xl">
-            <p className="eyebrow">Team balancing · v6</p>
+            <p className="eyebrow">Team balancing · v7</p>
             <h1 className="mt-4 text-[clamp(38px,6vw,64px)] font-bold leading-[1.08] tracking-[-0.045em]">
               감으로 섞지 않고,<br />
               <span className="text-[var(--primary)]">차이를 계산합니다.</span>
@@ -212,19 +212,20 @@ export default function TeamBalancePage() {
 
           <div className="mt-9 grid gap-4 md:grid-cols-3">
             <DarkStep number="1" title="강한 비선호 최소화">먼저 선호도 0% 라인에 배정되는 선수 수의 최솟값을 구합니다.</DarkStep>
-            <DarkStep number="2" title="라인 우세 분배">네 전장의 우세 수 차이를 최소화한 뒤, 3점 이하 동률 전장이 많은 조합을 우선합니다.</DarkStep>
+            <DarkStep number="2" title="라인 우세와 최고 선호">네 전장의 우세 수 차이를 최소화한 뒤, 최고 선호 라인 배정 인원과 3점 이하 동률 전장 수를 차례로 최대화합니다.</DarkStep>
             <DarkStep number="3" title="상위 후보 추출">남은 조합의 전력·맞라인·선호 비용을 비교해 상위 후보를 고릅니다.</DarkStep>
           </div>
 
           <div className="mt-5 rounded-2xl border border-white/15 bg-white/[0.06] p-5 sm:p-8">
             <div className="grid gap-7 lg:grid-cols-[0.8fr_1.2fr] lg:items-center">
-              <div><p className="text-xs font-bold uppercase tracking-[0.12em] text-[#ff9db3]">Objective function</p><h3 className="mt-2 text-2xl font-bold">불균형 비용 J</h3><p className="mt-3 text-sm leading-6 text-[#bdbdbd]">선호도 0% 배정을 최소화한 뒤 우세 불균형 D를 최소화하고 동률 전장 수 N을 최대화합니다. 그 후보끼리 이 비용을 비교하며, D=0이면 동률을 제외한 양 팀의 우세 수가 같습니다.</p><Formula dark className="mt-4" latex={String.raw`J=0.35G+0.30L+0.15M+0.15P+0.05R`} /></div>
+              <div><p className="text-xs font-bold uppercase tracking-[0.12em] text-[#ff9db3]">Objective function</p><h3 className="mt-2 text-2xl font-bold">불균형 비용 J</h3><p className="mt-3 text-sm leading-6 text-[#bdbdbd]">선호도 0% 배정을 최소화한 뒤 우세 불균형 D를 최소화하고, 최고 선호 배정 수 Q와 동률 전장 수 N을 차례로 최대화합니다. 그 후보끼리 이 비용을 비교하며, D=0이면 동률을 제외한 양 팀의 우세 수가 같습니다.</p><Formula dark className="mt-4" latex={String.raw`J=0.35G+0.30L+0.15M+0.15P+0.05R`} /></div>
               <div className="grid gap-2 sm:grid-cols-2">
                 {BALANCE_FORMULA_ITEMS.map((item) => <div key={item.label} className="flex items-center gap-3 rounded-xl bg-white/[0.07] px-4 py-3"><span className="min-w-12 rounded-lg bg-[#ffecf1] px-2 py-1 text-center text-xs font-bold text-[var(--primary)]">{Math.round(item.weight * 100)}%</span><span className="text-sm">{item.label}</span></div>)}
               </div>
             </div>
-            <div className="mt-6 grid gap-2 border-t border-white/10 pt-6 text-xs sm:grid-cols-2 lg:grid-cols-7">
+            <div className="mt-6 grid gap-2 border-t border-white/10 pt-6 text-xs sm:grid-cols-2 lg:grid-cols-8">
               <MathDefinition symbol="D" label="4개 전장 우세 수 차이" />
+              <MathDefinition symbol="Q" label="최고 선호 라인 배정 수" />
               <MathDefinition symbol="N" label="3점 이하 동률 전장 수" />
               <MathDefinition symbol="G" latex={String.raw`\frac{|\sum_r S_{B,r}-\sum_r S_{R,r}|}{5}`} />
               <MathDefinition symbol="L" latex={String.raw`\frac{\sum_r|S_{B,r}-S_{R,r}|}{5}`} />

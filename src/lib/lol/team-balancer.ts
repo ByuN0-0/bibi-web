@@ -15,7 +15,7 @@ import {
   observedRankScore,
   tierScore,
 } from "@/lib/lol/rating-calculator";
-import {resolveRolePreferences} from "@/lib/lol/role-preferences";
+import {highestPreferenceRoles, resolveRolePreferences} from "@/lib/lol/role-preferences";
 import {emptyTeamConstraints} from "@/lib/lol/team-constraints";
 
 const ROLES: Role[] = ["TOP", "JUNGLE", "MIDDLE", "BOTTOM", "UTILITY"];
@@ -34,12 +34,14 @@ type Candidate = {
   maxLaneGap: number;
   laneAdvantage: LaneAdvantage;
   advantageImbalance: number;
+  primaryRoleCount: number;
 };
 
 type SearchContext = {
   players: PlayerProfile[];
   signals: number[][];
   preferences: number[][];
+  primaryRoles: boolean[][];
   repeatWeights: number[][];
   recentWeightTotal: number;
   minimumOffRoles: number;
@@ -67,7 +69,13 @@ export function balanceTeam(
   const prior = groupPrior(ordered);
   const signals = ordered.map((player) => ROLES.map((role) =>
     signal(player, role, ratings.get(player.discordUserId), prior)));
-  const preferences = ordered.map((player) => ROLES.map((role) => preferencePenalty(player, role)));
+  const rolePreferences = ordered.map((player) => resolveRolePreferences(player));
+  const preferences = rolePreferences.map((playerPreferences) => ROLES.map((role) =>
+    1 - playerPreferences[role] / 100));
+  const primaryRoles = rolePreferences.map((playerPreferences) => {
+    const highestRoles = new Set(highestPreferenceRoles(playerPreferences));
+    return ROLES.map((role) => highestRoles.has(role));
+  });
   const indexById = new Map(ordered.map((player, index) => [player.discordUserId, index]));
   const lockedRoleById = new Map(constraints.roleLocks.map((lock) => [lock.discordUserId, ROLES.indexOf(lock.role)]));
   const minimumOffRoleMemo = Array.from({length: ROLES.length + 1}, () =>
@@ -76,6 +84,7 @@ export function balanceTeam(
     players: ordered,
     signals,
     preferences,
+    primaryRoles,
     repeatWeights: buildRepeatWeights(ordered, recent),
     recentWeightTotal: recent.reduce((sum, _session, index) => sum + Math.pow(0.85, index), 0),
     minimumOffRoles: PLAYER_COUNT + 1,
@@ -86,7 +95,7 @@ export function balanceTeam(
     ]),
     bestByTeamMask: new Map(),
   };
-  pairRoles(0, FULL_PLAYER_MASK, new Array<number>(PLAYER_COUNT), 0, 0, 0, 0, context);
+  pairRoles(0, FULL_PLAYER_MASK, new Array<number>(PLAYER_COUNT), 0, 0, 0, 0, 0, context);
 
   let candidates = [...context.bestByTeamMask.values()].sort((left, right) =>
     left.cost - right.cost
@@ -97,6 +106,8 @@ export function balanceTeam(
   if (!candidates.length) throw new Error("현재 조건에서 새로운 팀 조합이 없습니다.");
   const minimumAdvantageImbalance = Math.min(...candidates.map((candidate) => candidate.advantageImbalance));
   candidates = candidates.filter((candidate) => candidate.advantageImbalance === minimumAdvantageImbalance);
+  const maximumPrimaryRoleCount = Math.max(...candidates.map((candidate) => candidate.primaryRoleCount));
+  candidates = candidates.filter((candidate) => candidate.primaryRoleCount === maximumPrimaryRoleCount);
   const maximumNeutralCount = Math.max(...candidates.map((candidate) => candidate.laneAdvantage.neutralCount));
   candidates = candidates.filter((candidate) => candidate.laneAdvantage.neutralCount === maximumNeutralCount);
   const veryBalanced = candidates.filter((candidate) => candidate.laneAdvantage.balanced
@@ -139,13 +150,14 @@ function pairRoles(
   remainingMask: number,
   pairs: number[],
   offRoleCount: number,
+  primaryRoleCount: number,
   laneGapTotal: number,
   maxLaneGap: number,
   preferenceTotal: number,
   context: SearchContext,
 ) {
   if (roleIndex === ROLES.length) {
-    orientTeams(pairs, offRoleCount, laneGapTotal, maxLaneGap, preferenceTotal, context);
+    orientTeams(pairs, offRoleCount, primaryRoleCount, laneGapTotal, maxLaneGap, preferenceTotal, context);
     return;
   }
   for (let first = 0; first < PLAYER_COUNT; first += 1) {
@@ -158,6 +170,9 @@ function pairRoles(
       const nextOffRoleCount = offRoleCount
         + offRole(context.preferences[first][roleIndex])
         + offRole(context.preferences[second][roleIndex]);
+      const nextPrimaryRoleCount = primaryRoleCount
+        + primaryRole(context.primaryRoles[first][roleIndex])
+        + primaryRole(context.primaryRoles[second][roleIndex]);
       if (nextOffRoleCount + minimumRemainingOffRoles(roleIndex + 1, nextMask, context)
           > context.minimumOffRoles) continue;
       pairs[roleIndex * 2] = first;
@@ -168,6 +183,7 @@ function pairRoles(
         nextMask,
         pairs,
         nextOffRoleCount,
+        nextPrimaryRoleCount,
         laneGapTotal + laneGap,
         Math.max(maxLaneGap, laneGap),
         preferenceTotal + context.preferences[first][roleIndex] + context.preferences[second][roleIndex],
@@ -180,6 +196,7 @@ function pairRoles(
 function orientTeams(
   pairs: number[],
   offRoleCount: number,
+  primaryRoleCount: number,
   laneGapTotal: number,
   maxLaneGap: number,
   preferenceTotal: number,
@@ -214,7 +231,14 @@ function orientTeams(
     const laneAdvantage = summarizeLaneAdvantage(roleDeltas);
     const advantageImbalance = Math.abs(laneAdvantage.blueCount - laneAdvantage.redCount);
     const existing = context.bestByTeamMask.get(blueMask);
-    if (existing && compareLanePriority(existing.laneAdvantage, existing.cost, laneAdvantage, cost) <= 0) continue;
+    if (existing && compareLanePriority(
+      existing.laneAdvantage,
+      existing.primaryRoleCount,
+      existing.cost,
+      laneAdvantage,
+      primaryRoleCount,
+      cost,
+    ) <= 0) continue;
     const slots = new Array<number>(PLAYER_COUNT);
     for (let roleIndex = 0; roleIndex < ROLES.length; roleIndex += 1) {
       const swap = (orientation & (1 << roleIndex)) !== 0;
@@ -229,6 +253,7 @@ function orientTeams(
       maxLaneGap,
       laneAdvantage,
       advantageImbalance,
+      primaryRoleCount,
     });
   }
 }
@@ -248,13 +273,18 @@ export function summarizeLaneAdvantage(roleDeltas: number[]): LaneAdvantage {
 
 export function compareLanePriority(
   left: LaneAdvantage,
+  leftPrimaryRoleCount: number,
   leftCost: number,
   right: LaneAdvantage,
+  rightPrimaryRoleCount: number,
   rightCost: number,
 ) {
   const leftImbalance = Math.abs(left.blueCount - left.redCount);
   const rightImbalance = Math.abs(right.blueCount - right.redCount);
   if (leftImbalance !== rightImbalance) return leftImbalance - rightImbalance;
+  if (leftPrimaryRoleCount !== rightPrimaryRoleCount) {
+    return rightPrimaryRoleCount - leftPrimaryRoleCount;
+  }
   if (left.neutralCount !== right.neutralCount) return right.neutralCount - left.neutralCount;
   return leftCost - rightCost;
 }
@@ -376,6 +406,8 @@ function preferencePenalty(player: PlayerProfile, role: Role) {
 }
 
 const offRole = (preference: number) => preference === 1 ? 1 : 0;
+
+const primaryRole = (primary: boolean) => primary ? 1 : 0;
 
 function assignment(player: PlayerProfile, role: Role): TeamAssignment {
   const stats = player.roleStats?.[role];

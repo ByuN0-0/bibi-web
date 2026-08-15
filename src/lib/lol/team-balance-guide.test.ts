@@ -31,6 +31,7 @@ describe("team balance guide", () => {
     ]);
     expect(OFF_ROLE_DESCRIPTION).toContain("선호도 0%");
     expect(LOW_CONFIDENCE_DESCRIPTION).toContain("60% 미만");
+    expect(BALANCE_GUIDE_STEPS[1]).toContain("최고 선호 라인 배정이 많고");
     expect(BALANCE_GUIDE_STEPS[1]).toContain("동률 전장이 많은 조합");
   });
 
