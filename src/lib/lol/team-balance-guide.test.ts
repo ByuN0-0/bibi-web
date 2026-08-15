@@ -3,6 +3,7 @@ import {
   BALANCE_FORMULA_ITEMS,
   BALANCE_GRADE_RULES,
   formatBalanceGap,
+  formatLaneAdvantage,
   LOW_CONFIDENCE_DESCRIPTION,
   OFF_ROLE_DESCRIPTION,
   teamAssignmentWarning,
@@ -23,12 +24,19 @@ describe("team balance guide", () => {
     expect(BALANCE_FORMULA_ITEMS.reduce((sum, item) => sum + item.weight, 0)).toBeCloseTo(1);
     expect(BALANCE_FORMULA_ITEMS.map((item) => item.weight)).toEqual([0.35, 0.30, 0.15, 0.15, 0.05]);
     expect(BALANCE_GRADE_RULES).toEqual([
-      {grade: "매우 균형", rule: "전체 팀 차이 3점 이하 · 최대 라인 차이 10점 이하"},
-      {grade: "균형", rule: "전체 팀 차이 6점 이하 · 최대 라인 차이 18점 이하"},
-      {grade: "보통", rule: "위 조건을 만족하는 조합이 없을 때"},
+      {grade: "매우 균형", rule: "라인 우세 균형 · 전체 팀 차이 3점 이하 · 최대 라인 차이 10점 이하"},
+      {grade: "균형", rule: "라인 우세 균형 · 전체 팀 차이 6점 이하 · 최대 라인 차이 18점 이하"},
+      {grade: "보통", rule: "라인 우세가 불균형하거나 위 격차 조건을 만족하지 못할 때"},
     ]);
     expect(OFF_ROLE_DESCRIPTION).toContain("선호도 0%");
     expect(LOW_CONFIDENCE_DESCRIPTION).toContain("60% 미만");
+  });
+
+  it("formats only the aggregate lane advantage status", () => {
+    expect(formatLaneAdvantage(undefined)).toBeNull();
+    expect(formatLaneAdvantage({blueCount: 2, redCount: 2, neutralCount: 0, balanced: true})).toBe("2:2");
+    expect(formatLaneAdvantage({blueCount: 1, redCount: 1, neutralCount: 2, balanced: true})).toBe("동률 포함 균형 (2)");
+    expect(formatLaneAdvantage({blueCount: 3, redCount: 1, neutralCount: 0, balanced: false})).toBe("2:2 불가");
   });
 
   it("returns a warning that matches the badges in the composition", () => {

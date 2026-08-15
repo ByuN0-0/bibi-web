@@ -1,4 +1,4 @@
-import type {TeamAssignment} from "@/lib/lol/types";
+import type {LaneAdvantage, TeamAssignment} from "@/lib/lol/types";
 
 export const BALANCE_FORMULA_ITEMS = [
   {weight: 0.35, label: "전체 팀 평균 실력 차이"},
@@ -10,14 +10,14 @@ export const BALANCE_FORMULA_ITEMS = [
 
 export const BALANCE_GUIDE_STEPS = [
   "가능한 조합 중 선호도 0% 라인 배정이 가장 적은 조합을 먼저 선별해요.",
-  "선별된 조합마다 아래의 불균형 점수를 계산해요.",
-  "점수가 낮은 상위 조합일수록 더 높은 확률로 선택하고, 다시 편성할 때는 이미 보여준 조합을 제외해요.",
+  "탑·정글·미드·봇 듀오의 우세가 양 팀에 고르게 나뉘는 조합을 우선해요.",
+  "남은 조합의 불균형 점수를 비교하고, 다시 편성할 때는 이미 보여준 팀을 제외해요.",
 ] as const;
 
 export const BALANCE_GRADE_RULES = [
-  {grade: "매우 균형", rule: "전체 팀 차이 3점 이하 · 최대 라인 차이 10점 이하"},
-  {grade: "균형", rule: "전체 팀 차이 6점 이하 · 최대 라인 차이 18점 이하"},
-  {grade: "보통", rule: "위 조건을 만족하는 조합이 없을 때"},
+  {grade: "매우 균형", rule: "라인 우세 균형 · 전체 팀 차이 3점 이하 · 최대 라인 차이 10점 이하"},
+  {grade: "균형", rule: "라인 우세 균형 · 전체 팀 차이 6점 이하 · 최대 라인 차이 18점 이하"},
+  {grade: "보통", rule: "라인 우세가 불균형하거나 위 격차 조건을 만족하지 못할 때"},
 ] as const;
 
 export const OFF_ROLE_DESCRIPTION = "선호도 0%로 설정한 라인에 배정됐어요.";
@@ -26,6 +26,13 @@ export const LOW_CONFIDENCE_DESCRIPTION = "해당 라인의 경기 표본 신뢰
 export function formatBalanceGap(value: number) {
   const safeValue = Number.isFinite(value) ? Math.max(0, Math.min(1, value)) : 0;
   return `${(safeValue * 100).toFixed(1)}점`;
+}
+
+export function formatLaneAdvantage(value: LaneAdvantage | undefined) {
+  if (!value) return null;
+  if (!value.balanced) return "2:2 불가";
+  if (value.neutralCount > 0) return `동률 포함 균형 (${value.neutralCount})`;
+  return "2:2";
 }
 
 export function teamAssignmentWarning(

@@ -1,4 +1,4 @@
-export const ALGORITHM_VERSION = "team-balancing-v4";
+export const ALGORITHM_VERSION = "team-balancing-v5";
 export const ROLES = ["TOP", "JUNGLE", "MIDDLE", "BOTTOM", "UTILITY"] as const;
 export type Role = (typeof ROLES)[number];
 export type RolePreferences = Record<Role, number>;
@@ -162,7 +162,7 @@ export type InhouseRatingSnapshot = {
 };
 
 export type TeamComposition = {
-  algorithmVersion: typeof ALGORITHM_VERSION;
+  algorithmVersion: string;
   signature: string;
   blue: TeamAssignment[];
   red: TeamAssignment[];
@@ -170,6 +170,14 @@ export type TeamComposition = {
   teamGap: number;
   maxLaneGap: number;
   balanceGrade: string;
+  laneAdvantage?: LaneAdvantage;
+};
+
+export type LaneAdvantage = {
+  blueCount: number;
+  redCount: number;
+  neutralCount: number;
+  balanced: boolean;
 };
 
 export type RoleLock = {

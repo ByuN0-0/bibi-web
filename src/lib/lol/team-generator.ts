@@ -28,7 +28,7 @@ export async function generateTeamComposition(
   }
   const [allPlayers, recentSessions, ratingSnapshot] = await Promise.all([
     listPlayers(),
-    listRecentSessions(10, ["team-balancing-v3", ALGORITHM_VERSION]),
+    listRecentSessions(10, ["team-balancing-v3", "team-balancing-v4", ALGORITHM_VERSION]),
     getOrRebuildInhouseRatingSnapshot(),
   ]);
   const byId = new Map(allPlayers.map((player) => [player.discordUserId, player]));

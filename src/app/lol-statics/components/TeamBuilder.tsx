@@ -6,6 +6,7 @@ import TeamBalancingGuide from "@/app/lol-statics/components/TeamBalancingGuide"
 import {copyText} from "@/lib/clipboard";
 import {
   formatBalanceGap,
+  formatLaneAdvantage,
   LOW_CONFIDENCE_DESCRIPTION,
   OFF_ROLE_DESCRIPTION,
   teamAssignmentWarning,
@@ -54,6 +55,7 @@ export default function TeamBuilder({
   const assignmentWarning = draft?.composition
     ? teamAssignmentWarning([...draft.composition.blue, ...draft.composition.red])
     : null;
+  const laneAdvantageLabel = formatLaneAdvantage(draft?.composition?.laneAdvantage);
 
   useEffect(() => {
     if (!publicMode) return;
@@ -291,6 +293,7 @@ export default function TeamBuilder({
               <div className="flex flex-wrap gap-2">
                 <BalanceMetric label="전체 팀 차이" value={formatBalanceGap(draft.composition.teamGap)} />
                 <BalanceMetric label="최대 라인 차이" value={formatBalanceGap(draft.composition.maxLaneGap)} />
+                {laneAdvantageLabel && <BalanceMetric label="라인 우세 분배" value={laneAdvantageLabel} />}
               </div>
               <p className="mt-2 text-[11px] leading-5 text-[var(--muted)]">승률이 아니라 팀 편성에 사용하는 내부 0~100 실력 점수의 차이예요. 낮을수록 두 팀이 비슷해요.</p>
             </div>

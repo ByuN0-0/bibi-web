@@ -2,6 +2,7 @@ import {
   ALGORITHM_VERSION,
   rankTierDisplay,
   type InhousePlayerRating,
+  type LaneAdvantage,
   type PlayerProfile,
   type Role,
   type TeamAssignment,
@@ -23,6 +24,7 @@ const FULL_PLAYER_MASK = (1 << PLAYER_COUNT) - 1;
 const OVERALL_RATING_WEIGHT = 0.30;
 const ROLE_RATING_WEIGHT = 0.70;
 const MAX_INHOUSE_WEIGHT = 0.30;
+const NEUTRAL_LANE_GAP = 0.01;
 
 type Candidate = {
   signature: string;
@@ -30,6 +32,8 @@ type Candidate = {
   cost: number;
   teamGap: number;
   maxLaneGap: number;
+  laneAdvantage: LaneAdvantage;
+  advantageImbalance: number;
 };
 
 type SearchContext = {
@@ -89,11 +93,16 @@ export function balanceTeam(
       || (left.signature < right.signature ? -1 : left.signature > right.signature ? 1 : 0),
   );
   if (!candidates.length) throw new Error("고정 조건을 만족하는 팀 조합이 없습니다. 라인 고정과 같은 팀 고정의 충돌을 확인해 주세요.");
-  const veryBalanced = candidates.filter((candidate) => candidate.teamGap <= 0.03 && candidate.maxLaneGap <= 0.10);
-  const balanced = candidates.filter((candidate) => candidate.teamGap <= 0.06 && candidate.maxLaneGap <= 0.18);
-  candidates = (veryBalanced.length ? veryBalanced : balanced.length ? balanced : candidates)
-    .filter((candidate) => !excludedSignatures.has(candidate.signature)).slice(0, 20);
+  candidates = candidates.filter((candidate) => !excludedSignatures.has(candidate.signature));
   if (!candidates.length) throw new Error("현재 조건에서 새로운 팀 조합이 없습니다.");
+  const minimumAdvantageImbalance = Math.min(...candidates.map((candidate) => candidate.advantageImbalance));
+  candidates = candidates.filter((candidate) => candidate.advantageImbalance === minimumAdvantageImbalance);
+  const veryBalanced = candidates.filter((candidate) => candidate.laneAdvantage.balanced
+    && candidate.teamGap <= 0.03 && candidate.maxLaneGap <= 0.10);
+  const balanced = candidates.filter((candidate) => candidate.laneAdvantage.balanced
+    && candidate.teamGap <= 0.06 && candidate.maxLaneGap <= 0.18);
+  candidates = (veryBalanced.length ? veryBalanced : balanced.length ? balanced : candidates)
+    .slice(0, 20);
   return toComposition(weightedChoice(candidates, candidates[0].cost, random), ordered);
 }
 
@@ -178,6 +187,7 @@ function orientTeams(
     let blueMask = 0;
     let blueTotal = 0;
     let redTotal = 0;
+    const roleDeltas = new Array<number>(ROLES.length);
     for (let roleIndex = 0; roleIndex < ROLES.length; roleIndex += 1) {
       const swap = (orientation & (1 << roleIndex)) !== 0;
       const blue = pairs[roleIndex * 2 + (swap ? 1 : 0)];
@@ -185,6 +195,7 @@ function orientTeams(
       blueMask |= 1 << blue;
       blueTotal += context.signals[blue][roleIndex];
       redTotal += context.signals[red][roleIndex];
+      roleDeltas[roleIndex] = context.signals[blue][roleIndex] - context.signals[red][roleIndex];
     }
     // Swapping every blue and red player produces the same team composition.
     if (!(blueMask & 1)) continue;
@@ -198,8 +209,11 @@ function orientTeams(
     const repeat = repeatPenalty(blueMask, context.repeatWeights, context.recentWeightTotal);
     const cost = 0.35 * teamGap + 0.30 * (laneGapTotal / 5)
       + 0.15 * maxLaneGap + 0.15 * (preferenceTotal / PLAYER_COUNT) + 0.05 * repeat;
+    const laneAdvantage = summarizeLaneAdvantage(roleDeltas);
+    const advantageImbalance = Math.abs(laneAdvantage.blueCount - laneAdvantage.redCount);
     const existing = context.bestByTeamMask.get(blueMask);
-    if (existing && existing.cost <= cost) continue;
+    if (existing && (existing.advantageImbalance < advantageImbalance
+      || (existing.advantageImbalance === advantageImbalance && existing.cost <= cost))) continue;
     const slots = new Array<number>(PLAYER_COUNT);
     for (let roleIndex = 0; roleIndex < ROLES.length; roleIndex += 1) {
       const swap = (orientation & (1 << roleIndex)) !== 0;
@@ -212,8 +226,23 @@ function orientTeams(
       cost,
       teamGap,
       maxLaneGap,
+      laneAdvantage,
+      advantageImbalance,
     });
   }
+}
+
+export function summarizeLaneAdvantage(roleDeltas: number[]): LaneAdvantage {
+  let blueCount = 0;
+  let redCount = 0;
+  let neutralCount = 0;
+  const lanes = [roleDeltas[0], roleDeltas[1], roleDeltas[2], (roleDeltas[3] + roleDeltas[4]) / 2];
+  for (const lane of lanes) {
+    if (Math.abs(lane) <= NEUTRAL_LANE_GAP) neutralCount += 1;
+    else if (lane > 0) blueCount += 1;
+    else redCount += 1;
+  }
+  return {blueCount, redCount, neutralCount, balanced: blueCount === redCount};
 }
 
 function buildRepeatWeights(players: PlayerProfile[], recent: TeamSession[]) {
@@ -267,9 +296,11 @@ function toComposition(candidate: Candidate, players: PlayerProfile[]): TeamComp
     blue.push(assignment(players[candidate.slots[roleIndex * 2]], ROLES[roleIndex]));
     red.push(assignment(players[candidate.slots[roleIndex * 2 + 1]], ROLES[roleIndex]));
   }
-  const balanceGrade = candidate.teamGap <= 0.03 && candidate.maxLaneGap <= 0.10
+  const balanceGrade = candidate.laneAdvantage.balanced
+    && candidate.teamGap <= 0.03 && candidate.maxLaneGap <= 0.10
     ? "매우 균형"
-    : candidate.teamGap <= 0.06 && candidate.maxLaneGap <= 0.18 ? "균형" : "보통";
+    : candidate.laneAdvantage.balanced
+      && candidate.teamGap <= 0.06 && candidate.maxLaneGap <= 0.18 ? "균형" : "보통";
   return {
     algorithmVersion: ALGORITHM_VERSION,
     signature: candidate.signature,
@@ -279,6 +310,7 @@ function toComposition(candidate: Candidate, players: PlayerProfile[]): TeamComp
     teamGap: candidate.teamGap,
     maxLaneGap: candidate.maxLaneGap,
     balanceGrade,
+    laneAdvantage: candidate.laneAdvantage,
   };
 }
 

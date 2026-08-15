@@ -37,7 +37,7 @@ export default function TeamBalancingGuide({id}: {id: string}) {
             </div>
           ))}
         </div>
-        <p className="mt-3 text-xs leading-5 text-[var(--muted)]">포지션 선호 위반값은 1 - 선호도/100으로 계산해요. 80% 라인은 0.2, 20% 라인은 0.8이며, 0% 라인은 가능한 한 먼저 피합니다. 최근 같은 팀 반복은 최근 10번의 확정 편성을 사용하며 최신 기록일수록 더 크게 반영해요.</p>
+        <p className="mt-3 text-xs leading-5 text-[var(--muted)]">라인 우세는 탑·정글·미드와 원딜·서포터를 합친 봇 듀오까지 네 전장으로 비교하며, 1점 이하는 동률로 봐요. 포지션 선호 위반값은 1 - 선호도/100으로 계산하고 0% 라인은 가능한 한 먼저 피합니다. 최근 같은 팀 반복은 최근 10번의 확정 편성을 사용해요.</p>
       </div>
 
       <div className="mt-4 grid gap-3 md:grid-cols-2">
