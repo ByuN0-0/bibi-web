@@ -195,7 +195,10 @@ async function recognizeScoreboard(original, assetLayout) {
         numberField(`participants.${index}.goldWide`, 746, row, 76, {allowMissing: true, highContrast: true}),
       ]);
       const fallbackKda = [fallbackKills, fallbackDeaths, fallbackAssists];
-      const [kills, deaths, assists] = combinedKda ?? fallbackKda;
+      const recognizedKda = combinedKda ?? fallbackKda;
+      const [kills, deaths, assists] = ["kills", "deaths", "assists"].map((field, fieldIndex) => (
+        applyParticipantStatOverride(index, field, recognizedKda[fieldIndex], assetLayout.participantStatOverrides)
+      ));
       const combinedName = `${englishNameResult.text.replace(/[^0-9a-z]/gi, "")}${nameResult.text.replace(/[^가-힣]/g, "")}`;
       const matches = [nameResult.text, englishNameResult.text, combinedName].map((name) => matchRegisteredPlayer(name, players)).filter(Boolean);
       const matched = matches.sort((left, right) => right.confidence - left.confidence)[0] ?? null;
@@ -401,6 +404,14 @@ async function numberField(field, centerX, centerY, width, {blankIsZero = false,
   if (value === null && allowMissing) return null;
   if (value === null) fail(`${field} 숫자를 읽지 못했습니다.`);
   return value;
+}
+
+function applyParticipantStatOverride(index, field, recognized, overrides) {
+  const override = overrides?.[index]?.[field];
+  if (override === undefined) return recognized;
+  if (!Number.isSafeInteger(override) || override < 0) fail(`participants.${index}.${field} 보정값이 올바르지 않습니다.`);
+  ocrLog.push({field: `participants.${index}.${field}.override`, text: String(override), confidence: 100});
+  return override;
 }
 
 async function alignToCanvas(buffer, info, transform) {

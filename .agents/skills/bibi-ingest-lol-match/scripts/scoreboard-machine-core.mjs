@@ -117,11 +117,11 @@ export function parseInteger(text) {
 
 export function selectLevelReading(readings) {
   const parsed = readings.map((reading) => ({...reading, value: parseInteger(reading.text)}));
-  if (parsed[0] && parsed[0].value >= 1 && parsed[0].value <= 18) return {value: parsed[0].value, reviewIssue: null};
+  if (parsed[0] && parsed[0].value >= 1 && parsed[0].value <= 20) return {value: parsed[0].value, reviewIssue: null};
   const borderArtifact = String(readings[0]?.text ?? "").replace(/[^0-9]/g, "").match(/^1(\d{2})$/);
   const artifactLevel = borderArtifact ? Number(borderArtifact[1]) : null;
-  if (artifactLevel && artifactLevel >= 1 && artifactLevel <= 18) return {value: artifactLevel, reviewIssue: null};
-  const validRetries = parsed.slice(1).filter((reading) => Number.isInteger(reading.value) && reading.value >= 1 && reading.value <= 18);
+  if (artifactLevel && artifactLevel >= 1 && artifactLevel <= 20) return {value: artifactLevel, reviewIssue: null};
+  const validRetries = parsed.slice(1).filter((reading) => Number.isInteger(reading.value) && reading.value >= 1 && reading.value <= 20);
   if (validRetries.length && new Set(validRetries.map((reading) => reading.value)).size === 1) return {value: validRetries[0].value, reviewIssue: null};
   return {
     value: 1,

@@ -27,9 +27,11 @@ describe("scoreboard machine parsing", () => {
     expect(parseKda("11 / 3 / 13")).toEqual([11, 3, 13]);
   });
 
-  it("selects a valid level retry and falls back to a flagged level 1", () => {
+  it("selects levels up to 20 and falls back to a flagged level 1", () => {
     expect(selectLevelReading([{text: "114", confidence: 90}, {text: "14", confidence: 70}])).toEqual({value: 14, reviewIssue: null});
     expect(selectLevelReading([{text: "115", confidence: 90}, {text: "", confidence: 0}])).toEqual({value: 15, reviewIssue: null});
+    expect(selectLevelReading([{text: "19", confidence: 90}])).toEqual({value: 19, reviewIssue: null});
+    expect(selectLevelReading([{text: "120", confidence: 90}, {text: "20", confidence: 70}])).toEqual({value: 20, reviewIssue: null});
     expect(selectLevelReading([{text: "999", confidence: 90}, {text: "", confidence: 0}])).toEqual({
       value: 1,
       reviewIssue: {reasons: ["LEVEL_UNRESOLVED"], detectedText: "999"},

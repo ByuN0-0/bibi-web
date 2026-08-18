@@ -30,10 +30,10 @@ node --env-file=.env .agents/skills/bibi-ingest-lol-match/scripts/ingest-scorebo
 
 If the user explicitly supplies corrected team totals after a mechanical-total failure, add one `--team-stat TEAM.field=value` option per value and retry. Supported fields are `kills`, `deaths`, `assists`, and `goldTotal`.
 
-If the user explicitly supplies a corrected participant CS value after OCR failure, retry with the zero-based scoreboard row index:
+If the user explicitly supplies a corrected participant K/D/A or CS value after OCR failure, retry with the zero-based scoreboard row index. Supported fields are `kills`, `deaths`, `assists`, and `cs`:
 
 ```bash
-node --env-file=.env .agents/skills/bibi-ingest-lol-match/scripts/ingest-scoreboard.mjs <attached-screenshot-path> --participant-stat <index>.cs=<value>
+node --env-file=.env .agents/skills/bibi-ingest-lol-match/scripts/ingest-scoreboard.mjs <attached-screenshot-path> --participant-stat <index>.<field>=<value>
 ```
 
 ## Validate without saving
